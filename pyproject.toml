@@ -1,0 +1,12 @@
+[project]
+name = "medical-exp-deducation-calc"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "paddleocr[doc-parser]>=3.6.0",
+    "paddlepaddle>=3.3.1",
+]
+[tool.black]
+line-length = 119
