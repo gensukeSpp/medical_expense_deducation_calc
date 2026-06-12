@@ -56,6 +56,13 @@ Files to inspect first
 - pyproject.toml (python & deps)
 - 要件定義書.md (design / roadmap)
 
+Copilot CLI custom slashes
+- A local copilot slash is provided to update the architecture index: scripts/copilot_update_arch.sh
+- Usage (local): run the script directly or configure Copilot CLI to map a slash command to the script. Example local command:
+  - ./scripts/copilot_update_arch.sh
+- Suggested slash name: /update-arch — map it to run the above script. The script will execute scripts/update_arch_index.py, commit README changes (if any), and push to the current branch.
+- If you prefer the slash to create a PR instead of pushing directly, modify the script to create a branch and call `gh pr create` instead of `git push`.
+
 AI assistant / agent configs
 - This file centralizes Copilot guidance. No other assistant config files (CLAUDE.md, .cursorrules, AGENTS.md, etc.) were detected in the repo root.
 
