@@ -11,4 +11,4 @@ dependencies = [
     "watchdog>=6.0.0",
 ]
 [tool.black]
-line-length = 88
+line-length = 112

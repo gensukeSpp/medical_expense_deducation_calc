@@ -7,19 +7,18 @@ Notes:
 - Uses polling by default (no extra deps). If watchdog is installed it will not be required, polling is adequate.
 - Requires PaddleOCR; ensure environment set up via `uv add` as requested.
 """
+
 from __future__ import annotations
 
 import argparse
 import logging
 import shutil
 import time
-from datetime import datetime
 from pathlib import Path
 from typing import Iterable
 
 from paddleocr import PaddleOCR
-from medical_exp_deducation_calc.app.ocr_pipeline import process_image
-
+from app.ocr_pipeline import process_image
 
 LOG = logging.getLogger("ocr_watcher")
 
@@ -184,7 +183,14 @@ def run_loop(
         time.sleep(poll_interval)
 
 
-def run_watchdog(input_dir: Path, output_dir: Path, processed_dir: Path, failed_dir: Path, poll_interval: int = 10, retries: int = 1):
+def run_watchdog(
+    input_dir: Path,
+    output_dir: Path,
+    processed_dir: Path,
+    failed_dir: Path,
+    poll_interval: int = 10,
+    retries: int = 1,
+):
     """Run an inotify-style watcher using watchdog. Falls back to polling if watchdog isn't available."""
     try:
         from watchdog.observers import Observer
@@ -192,7 +198,15 @@ def run_watchdog(input_dir: Path, output_dir: Path, processed_dir: Path, failed_
     except Exception as e:
         LOG.warning("watchdog not available, falling back to polling: %s", e)
         # fallback to polling loop
-        run_loop(input_dir, output_dir, processed_dir, failed_dir, poll_interval=poll_interval, run_once=False, retries=retries)
+        run_loop(
+            input_dir,
+            output_dir,
+            processed_dir,
+            failed_dir,
+            poll_interval=poll_interval,
+            run_once=False,
+            retries=retries,
+        )
         return
 
     ocr = PaddleOCR(use_angle_cls=True, lang="japan", enable_mkldnn=False)
@@ -217,7 +231,7 @@ def run_watchdog(input_dir: Path, output_dir: Path, processed_dir: Path, failed_
                         t = threading.Thread(target=_delayed, daemon=True)
                         t.start()
             except Exception:
-                LOG.exception("Error handling created event %s", getattr(event, 'src_path', event))
+                LOG.exception("Error handling created event %s", getattr(event, "src_path", event))
 
     observer = Observer()
     handler = Handler()
@@ -242,7 +256,11 @@ def parse_args(argv: Iterable[str] | None = None):
     p.add_argument("--poll-interval", type=int, default=10, help="Seconds between scans when in watch mode")
     p.add_argument("--run-once", action="store_true", help="Scan once and exit")
     p.add_argument("--retries", type=int, default=1, help="Number of retry attempts per file on failure")
-    p.add_argument("--use-watchdog", action="store_true", help="Use watchdog observer instead of polling (requires watchdog package)")
+    p.add_argument(
+        "--use-watchdog",
+        action="store_true",
+        help="Use watchdog observer instead of polling (requires watchdog package)",
+    )
     return p.parse_args(list(argv) if argv is not None else None)
 
 
@@ -257,10 +275,25 @@ if __name__ == "__main__":
 
     if args.use_watchdog:
         try:
-            run_watchdog(input_dir, output_dir, processed_dir, failed_dir, poll_interval=args.poll_interval, retries=args.retries)
+            run_watchdog(
+                input_dir,
+                output_dir,
+                processed_dir,
+                failed_dir,
+                poll_interval=args.poll_interval,
+                retries=args.retries,
+            )
         except Exception:
             LOG.exception("Watchdog failed, falling back to polling loop")
-            run_loop(input_dir, output_dir, processed_dir, failed_dir, poll_interval=args.poll_interval, run_once=args.run_once, retries=args.retries)
+            run_loop(
+                input_dir,
+                output_dir,
+                processed_dir,
+                failed_dir,
+                poll_interval=args.poll_interval,
+                run_once=args.run_once,
+                retries=args.retries,
+            )
     else:
         run_loop(
             input_dir,

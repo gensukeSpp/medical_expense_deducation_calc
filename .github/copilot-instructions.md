@@ -8,10 +8,10 @@ Build / Run / Test / Lint
 - Recommended virtualenv:
   - python -m venv .venv
   - source .venv/bin/activate
-  - pip install --upgrade pip
+  - uv pip install --upgrade uv[all]
 - Install runtime dependencies (no lockfile provided):
-  - pip install "paddleocr[doc-parser]>=3.6.0" "paddlepaddle>=3.3.1"
-  - or (if packaging tooling is present): pip install -e .
+  - uv add "paddleocr[doc-parser]>=3.6.0" "paddlepaddle>=3.3.1"
+  - or (if packaging tooling is present): uv add --editable .
 - Run the app (simple):
   - Edit main.py to set image_name or place an image at: ~/Downloads/receipts/IMG_YYYYMMDD_xxx.jpg
   - python main.py

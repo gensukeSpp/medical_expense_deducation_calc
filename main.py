@@ -6,8 +6,6 @@ import json
 from pathlib import Path
 from paddleocr import PaddleOCR
 
-from medical_exp_deducation_calc.app.image_resize import resize_image_for_ocr
-
 
 def main():
     import argparse
@@ -20,8 +18,14 @@ def main():
     parser.add_argument("--input-dir", default=str(Path.home() / "Downloads" / "receipts"))
     parser.add_argument("--image-name", default=None, help="Process a single image by name")
     parser.add_argument("--output-dir", default="output_json", help="JSON output directory")
-    parser.add_argument("--watch", action="store_true", help="Run folder watcher instead of single-file processing")
-    parser.add_argument("--use-watchdog", action="store_true", help="When watching, use watchdog observer (inotify) if available")
+    parser.add_argument(
+        "--watch", action="store_true", help="Run folder watcher instead of single-file processing"
+    )
+    parser.add_argument(
+        "--use-watchdog",
+        action="store_true",
+        help="When watching, use watchdog observer (inotify) if available",
+    )
     parser.add_argument("--processed-dir", default="processed", help="Directory to move processed images to")
     parser.add_argument("--failed-dir", default="failed", help="Directory to move failed images to")
     parser.add_argument("--poll-interval", type=int, default=10, help="Polling interval for watcher (seconds)")
@@ -36,8 +40,8 @@ def main():
     # OCRエンジン初期化
     ocr = PaddleOCR(use_angle_cls=True, lang="japan", enable_mkldnn=False)
 
-    from medical_exp_deducation_calc.app.ocr_pipeline import process_image
-    from medical_exp_deducation_calc.app import watcher
+    from app.ocr_pipeline import process_image
+    from app import watcher
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -49,10 +53,25 @@ def main():
         # Start watcher (either watchdog observer or polling loop)
         if args.use_watchdog:
             print("Starting watcher (watchdog mode)...")
-            watcher.run_watchdog(input_dir, output_dir, processed_dir, failed_dir, poll_interval=args.poll_interval, retries=args.retries)
+            watcher.run_watchdog(
+                input_dir,
+                output_dir,
+                processed_dir,
+                failed_dir,
+                poll_interval=args.poll_interval,
+                retries=args.retries,
+            )
         else:
             print("Starting watcher (polling mode)...")
-            watcher.run_loop(input_dir, output_dir, processed_dir, failed_dir, poll_interval=args.poll_interval, run_once=False, retries=args.retries)
+            watcher.run_loop(
+                input_dir,
+                output_dir,
+                processed_dir,
+                failed_dir,
+                poll_interval=args.poll_interval,
+                run_once=False,
+                retries=args.retries,
+            )
         return
 
     if args.image_name:
@@ -71,7 +90,9 @@ def main():
             print(f"Processing failed: {e}")
             return
     else:
-        print("No --image-name provided. Pass an image name to process a single file, or use --watch to run the folder watcher.")
+        print(
+            "No --image-name provided. Pass an image name to process a single file, or use --watch to run the folder watcher."
+        )
 
 
 if __name__ == "__main__":

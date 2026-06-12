@@ -4,7 +4,7 @@ This file documents how to run tests and set up the development environment.
 
 ## Python and environment
 - Recommended Python: 3.11
-- Use pyenv to install: `pyenv install 3.11.6` (or latest 3.11.x)
+- ~~Use pyenv to install: `pyenv install 3.11.6` (or latest 3.11.x)~~
 - Create and activate virtualenv:
 
   python -m venv .venv

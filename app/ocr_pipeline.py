@@ -3,12 +3,12 @@
 Provides process_image() to resize image, run PaddleOCR predict, normalize results,
 and optionally write structured JSON output.
 """
+
 from pathlib import Path
-import json
 import cv2
 from typing import List, Optional
 
-from medical_exp_deducation_calc.app.image_resize import resize_image_for_ocr
+from app.image_resize import resize_image_for_ocr
 
 
 def _normalize_results(results) -> List[dict]:
@@ -87,7 +87,7 @@ def process_image(
     structured = _normalize_results(results)
 
     if output_json_path:
-        from medical_exp_deducation_calc.app.output import write_json_atomic
+        from app.output import write_json_atomic
 
         output_json_path = Path(output_json_path)
         write_json_atomic(output_json_path, structured)
