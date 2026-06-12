@@ -12,8 +12,20 @@ $PY scripts/update_arch_index.py
 
 # If README changed, commit and push (or create PR if requested)
 CREATE_PR=0
-if [ "${1-}" = "--pr" ] || [ "${PR_MODE-}" = "1" ]; then
+CREATE_DRAFT=0
+for arg in "$@"; do
+  if [ "$arg" = "--pr" ]; then
+    CREATE_PR=1
+  fi
+  if [ "$arg" = "--draft" ]; then
+    CREATE_DRAFT=1
+  fi
+done
+if [ "${PR_MODE-}" = "1" ]; then
   CREATE_PR=1
+fi
+if [ "${DRAFT_MODE-}" = "1" ]; then
+  CREATE_DRAFT=1
 fi
 
 if ! git diff --quiet -- docs/architecture/README.md; then
@@ -24,7 +36,11 @@ if ! git diff --quiet -- docs/architecture/README.md; then
     git commit -m "chore(docs): update architecture index (copilot slash)\n\nCo-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
     git push --set-upstream origin "$BRANCH"
     # create PR using gh
-    gh pr create --title "chore(docs): update architecture index" --body "Auto-generated architecture index update." --base main --head "$BRANCH"
+    GH_CMD=(gh pr create --title "chore(docs): update architecture index" --body "Auto-generated architecture index update." --base main --head "$BRANCH")
+    if [ $CREATE_DRAFT -eq 1 ]; then
+      GH_CMD+=(--draft)
+    fi
+    "${GH_CMD[@]}"
     echo "Created PR for updated architecture README: branch $BRANCH"
   else
     git add docs/architecture/README.md
