@@ -9,3 +9,7 @@ wheels/
 # Virtual environments
 .venv
 .serena
+output_json/
+failed/
+processed/
+uv.lock
