@@ -3,6 +3,7 @@ Simple LLM extractor wrapper with a Mock client for local testing.
 - MockLLMClient.extract_fields(ocr_json) returns a best-effort extraction using heuristics.
 - Real client placeholder (not implemented) should follow same interface.
 """
+
 from __future__ import annotations
 import re
 from typing import Dict, Any, Optional
@@ -15,26 +16,29 @@ class MockLLMClient:
         self.model_name = model_name or "mock"
 
     def extract_fields(self, ocr_json: Dict[str, Any]) -> Dict[str, Any]:
+        import unicodedata
+
         lines = ocr_json.get("text_lines") or []
         # flatten words if present
         if not lines and "words" in ocr_json:
             lines = [w.get("text", "") for w in ocr_json.get("words", [])]
-
+        # Normalize to NFKC to convert full-width alphanumeric characters to half-width
+        lines = [unicodedata.normalize("NFKC", line) for line in lines]
         text = "\n".join(lines)
 
         # name heuristic: look for '様' or lines starting with 患者
         name = None
         # Prefer line-wise extraction to avoid greedy cross-line matches
         for line in lines:
-            if '様' in line:
+            if "様" in line:
                 # take text before 様
-                name = line.split('様')[0].strip()
+                name = line.split("様")[0].strip()
                 break
-            if line.startswith('患者') or '患者:' in line or '患者：' in line:
+            if line.startswith("患者") or "患者:" in line or "患者：" in line:
                 m2 = re.search(r"患者[:：]?\s*(.+)", line)
                 if m2:
                     candidate = m2.group(1).strip()
-                    candidate = candidate.replace('様', '').strip()
+                    candidate = candidate.replace("様", "").strip()
                     if 1 < len(candidate) <= 40:
                         name = candidate
                         break
@@ -76,7 +80,14 @@ class MockLLMClient:
                 m_kanji = re.search(r"一万二千|一万|二千|三千|四千|五千", text)
                 if m_kanji:
                     # crude mapping for common tokens used in samples
-                    mapping = {"一万二千": 12000, "一万": 10000, "二千": 2000, "三千": 3000, "四千": 4000, "五千": 5000}
+                    mapping = {
+                        "一万二千": 12000,
+                        "一万": 10000,
+                        "二千": 2000,
+                        "三千": 3000,
+                        "四千": 4000,
+                        "五千": 5000,
+                    }
                     amount = mapping.get(m_kanji.group(0))
 
         # date heuristic: YYYY/MM/DD or YYYY年M月D日 or YY/MM/DD or M/D/YY
@@ -96,16 +107,20 @@ class MockLLMClient:
             except Exception:
                 date = None
         else:
-            # small YY forms like 1/5/26 => assume 20xx where xx is 2-digit year
-            m2 = re.search(r"(\d{1,2})/(\d{1,2})/(\d{2,4})", text)
+            # small YY forms like 26/1/5 or 26/01/15 => assume YY/MM/DD where YY is 2-digit year
+            m2 = re.search(r"(\d{1,2})/(\d{1,2})/(\d{1,2})", text)
             if m2:
-                a, b, c = m2.groups()
-                if len(c) == 2:
-                    yy = int(c)
+                y_part, m_part, d_part = m2.groups()
+                if len(y_part) == 2:
+                    yy = int(y_part)
                     y = 2000 + yy if yy < 70 else 1900 + yy
+                elif len(y_part) == 1:
+                    # Fallback for single-digit era year (e.g. Reiwa 1 = 2019)
+                    yy = int(y_part)
+                    y = 2018 + yy
                 else:
-                    y = int(c)
-                date = f"{y}-{int(a):02d}-{int(b):02d}"
+                    y = int(y_part)
+                date = f"{y}-{int(m_part):02d}-{int(d_part):02d}"
 
         return {"name": name, "clinic": clinic, "amount": amount, "date": date}
 

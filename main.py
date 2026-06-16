@@ -1,6 +1,3 @@
-from paddleocr import PaddleOCR
-
-
 def main():
     # 引数解析と初期化
     from app.args import setup_args, setup_directories
@@ -9,6 +6,8 @@ def main():
     input_dir, output_dir, processed_dir, failed_dir = setup_directories(args)
 
     # OCRエンジン初期化
+    from paddleocr import PaddleOCR
+
     ocr = PaddleOCR(use_angle_cls=True, lang="japan", enable_mkldnn=False)
 
     # Watcherの起動

@@ -5,7 +5,10 @@ from pathlib import Path
 
 
 def setup_args():
-    """引数を解析し、初期化処理を行う"""
+    """引数を解析し、初期化処理を行う。
+    Returns:
+        argparse.Namespace: 解析されたコマンドライン引数。
+    """
     # Setup logging
     logging.basicConfig(level=logging.INFO)
 
@@ -33,8 +36,13 @@ def setup_args():
     return args
 
 
-def setup_directories(args):
-    """出力ディレクトリを作成する"""
+def setup_directories(args: argparse.Namespace) -> tuple[Path, Path, Path, Path]:
+    """出力および管理用ディレクトリを作成し、Pathオブジェクトを返す。
+    Args:
+        args (argparse.Namespace): 解析されたコマンドライン引数。
+    Returns:
+        tuple[Path, Path, Path, Path]: (input_dir, output_dir, processed_dir, failed_dir) のタプル。
+    """
     input_dir = Path(args.input_dir)
     if not input_dir.exists():
         input_dir.mkdir(parents=True, exist_ok=True)

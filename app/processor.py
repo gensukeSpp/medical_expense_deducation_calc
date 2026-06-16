@@ -1,10 +1,21 @@
 import sys
 import logging
 from datetime import datetime
+import argparse
+from pathlib import Path
+
+from paddleocr import PaddleOCR
 
 
-def process_single_image(args, input_dir, output_dir, ocr):
-    """単一画像を処理する"""
+def process_single_image(args: argparse.Namespace, input_dir: Path, output_dir: Path, ocr: PaddleOCR) -> None:
+    """単一の画像をOCR処理し、結果をJSONファイルとして保存する。
+
+    Args:
+        args (argparse.Namespace): コマンドライン引数。
+        input_dir (Path): 入力画像ディレクトリ。
+        output_dir (Path): 出力JSONディレクトリ。
+        ocr (PaddleOCR): 初期化済みのPaddleOCRインスタンス。
+    """
     if args.image_name:
         image_path = input_dir / args.image_name
         if not image_path.exists():
@@ -24,7 +35,11 @@ def process_single_image(args, input_dir, output_dir, ocr):
                 logging.error("image-name must be inside input-dir: %s", input_dir)
                 sys.exit(1)
 
-        out_fname = f"{datetime.now():%Y%m%d}_{image_path.stem}-raw_data.json"
+        try:
+            mtime = int(image_path.stat().st_mtime)
+        except Exception:
+            mtime = int(datetime.now().timestamp())
+        out_fname = f"{image_path.stem}_{mtime}-raw_data.json"
         output_json_path = output_dir / out_fname
 
         try:
