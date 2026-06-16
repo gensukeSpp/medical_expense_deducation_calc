@@ -8,7 +8,7 @@ from pathlib import Path
 import cv2
 from typing import List, Optional
 
-from app.image_resize import resize_image_for_ocr
+from .image_resize import resize_image_for_ocr
 
 
 def _normalize_results(results) -> List[dict]:
@@ -87,7 +87,7 @@ def process_image(
     structured = _normalize_results(results)
 
     if output_json_path:
-        from app.output import write_json_atomic
+        from .output import write_json_atomic
 
         output_json_path = Path(output_json_path)
         write_json_atomic(output_json_path, structured)
