@@ -7,13 +7,23 @@ from typing import Dict, Any, Optional
 from app.input import read_json
 from app.llm_extractor import get_llm_client
 from app.normalization import normalize_extracted
-from app.output import write_json
+from app.output import write_json_atomic
 from app.error_logging import append_error
 
 
 def process_input_json(
     input_path: Path | str, model: str = "mock", output_dir: Path | str = "output_json"
 ) -> Optional[Dict[str, Any]]:
+    """Process an OCR JSON file to extract and normalize structured fields.
+
+    Args:
+        input_path: Path to the input OCR JSON file.
+        model: The LLM model name or 'mock' for local heuristics.
+        output_dir: The directory where the structured JSON output will be saved.
+
+    Returns:
+        The normalized structured data dictionary, or None if processing failed.
+    """
     input_path = Path(input_path)
     output_dir = Path(output_dir)
     try:
@@ -41,7 +51,7 @@ def process_input_json(
     try:
         out_name = f"{input_path.stem}-structured_data.json"
         out_path = output_dir / out_name
-        write_json(out_path, structured)
+        write_json_atomic(out_path, structured)
     except Exception as e:
         append_error(output_dir, str(input_path), str(e), "write_output", {"structured": structured})
         return None

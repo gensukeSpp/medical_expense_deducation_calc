@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from typing import Dict, Any, Optional, List
+from app.normalization import parse_amount, parse_date
 
 
 def normalize_lines(ocr_json: Dict[str, Any]) -> List[str]:
@@ -50,91 +51,12 @@ def extract_clinic_from_lines(lines: List[str]) -> Optional[str]:
 def extract_amount_from_text(text: str) -> Optional[int]:
     # amount heuristic: numbers with yen or 万 (simple)
     # try common patterns
-    m_amount = re.search(r"([0-9,，]+)\s*円", text)
-    if m_amount:
-        amt = m_amount.group(1)
-        amt = amt.replace(",", "").replace("，", "")
-        try:
-            return int(amt)
-        except Exception:
-            return None
-    else:
-        # 万円形式
-        m_wan = re.search(r"([0-9]+)万", text)
-        if m_wan:
-            try:
-                return int(m_wan.group(1)) * 10000
-            except Exception:
-                return None
-        else:
-            # kanji numbers fallback (basic)
-            m_kanji = re.search(r"一万二千|一万|二千|三千|四千|五千", text)
-            if m_kanji:
-                # crude mapping for common tokens used in samples
-                mapping = {
-                    "一万二千": 12000,
-                    "一万": 10000,
-                    "二千": 2000,
-                    "三千": 3000,
-                    "四千": 4000,
-                    "五千": 5000,
-                }
-                return mapping.get(m_kanji.group(0))
-    return None
+    return parse_amount(text)
 
 
 def extract_date_from_text(text: str) -> Optional[str]:
     # date heuristic: YYYY/MM/DD or YYYY年M月D日 or YY/MM/DD or M/D/YY
-    m_date = re.search(r"(20\d{2}[-/年]\d{1,2}[-/月]\d{1,2}日?)", text)
-    if m_date:
-        raw = m_date.group(1)
-        # normalize
-        raw = raw.replace("年", "-").replace("月", "-").replace("日", "")
-        raw = raw.replace("/", "-")
-        parts = raw.split("-")
-        try:
-            y = parts[0]
-            mth = parts[1].zfill(2)
-            d = parts[2].zfill(2)
-            return f"{y}-{mth}-{d}"
-        except Exception:
-            return None
-    else:
-        # handle forms like M/D/YY, D/M/YY, or Y/M/D
-        m2 = re.search(r"(\d{1,4})/(\d{1,2})/(\d{1,4})", text)
-        if m2:
-            a, b, c = m2.groups()
-            try:
-                # if a looks like a full year (4 digits), treat as year/month/day
-                if len(a) == 4:
-                    y = int(a)
-                    mth = int(b)
-                    d = int(c)
-                # if c looks like full year, assume a/mth and b/day
-                elif len(c) == 4:
-                    y = int(c)
-                    mth = int(a)
-                    d = int(b)
-                # if c is 2-digit, assume it's year (YY)
-                elif len(c) == 2:
-                    yy = int(c)
-                    y = 2000 + yy if yy < 70 else 1900 + yy
-                    mth = int(a)
-                    d = int(b)
-                else:
-                    # fallback: prefer c as day if > 31 treat a as year
-                    if int(a) > 31:
-                        y = int(a)
-                        mth = int(b)
-                        d = int(c)
-                    else:
-                        y = int(c)
-                        mth = int(a)
-                        d = int(b)
-                return f"{y}-{mth:02d}-{d:02d}"
-            except Exception:
-                return None
-    return None
+    return parse_date(text)
 
 
 class MockLLMClient:

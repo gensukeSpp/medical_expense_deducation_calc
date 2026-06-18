@@ -22,17 +22,42 @@ def parse_amount(text: str) -> Optional[int]:
         except Exception:
             return None
     # 万円 style like '1万2千' or '1万' or '一万二千'
-    m_wan = re.search(r"([0-9]+)万", t)
+    m_wan = re.search(r"([0-9]+)万\s*(?:([0-9]+)(千)?)?", t)
     if m_wan:
         try:
-            return int(m_wan.group(1)) * 10000
+            val = int(m_wan.group(1)) * 10000
+            if m_wan.group(2):
+                sub_val = int(m_wan.group(2))
+                if m_wan.group(3) == "千":
+                    sub_val *= 1000
+                val += sub_val
+            return val
         except Exception:
             return None
+
     # Kanji common mapping (limited)
-    mapping = {"一万二千": 12000, "一万": 10000, "二千": 2000, "三千": 3000, "四千": 4000, "五千": 5000}
-    for k, v in mapping.items():
-        if k in t:
-            return v
+    m_kanji = re.search(r"([一二三四五六七八九十百千万]+)\s*円", t)
+    if m_kanji:
+        kanji_str = m_kanji.group(1)
+        kanji_digits = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+        val, temp = 0, 0
+        for char in kanji_str:
+            if char in kanji_digits:
+                temp = kanji_digits[char]
+            elif char == "万":
+                val += (temp or 1) * 10000
+                temp = 0
+            elif char == "千":
+                val += (temp or 1) * 1000
+                temp = 0
+            elif char == "百":
+                val += (temp or 1) * 100
+                temp = 0
+            elif char == "十":
+                val += (temp or 1) * 10
+                temp = 0
+        val += temp
+        return val
 
     # normalize fullwidth digits and punctuation to ascii
     def normalize_fw(s: str) -> str:
@@ -51,14 +76,40 @@ def parse_amount(text: str) -> Optional[int]:
         return "".join(res)
 
     norm = normalize_fw(t)
-    m2 = re.search(r"([0-9,]+)\s*円", norm)
+    # M/D/YY, YY/MM/DD, or DD/MM/YYYY
+    m2 = re.search(r"(\d{1,4})/(\d{1,2})/(\d{1,4})", t)
     if m2:
-        s = m2.group(1).replace(",", "")
+        a, b, c = m2.groups()
         try:
-            return int(s)
+            # Try YYYY/MM/DD or YY/MM/DD first
+            if len(a) == 4 or (len(a) == 2 and 1 <= int(b) <= 12 and 1 <= int(c) <= 31):
+                y = int(a)
+                if len(a) == 2:
+                    y = 2000 + y if y < 70 else 1900 + y
+                mth = int(b)
+                d = int(c)
+                if 1 <= mth <= 12 and 1 <= d <= 31:
+                    return f"{y:04d}-{mth:02d}-{d:02d}"
+
+            # Try MM/DD/YY or MM/DD/YYYY
+            mth = int(a)
+            d = int(b)
+            y = int(c)
+            if len(c) == 2:
+                y = 2000 + y if y < 70 else 1900 + y
+            if 1 <= mth <= 12 and 1 <= d <= 31:
+                return f"{y:04d}-{mth:02d}-{d:02d}"
+
+            # Try DD/MM/YY or DD/MM/YYYY
+            d = int(a)
+            mth = int(b)
+            y = int(c)
+            if len(c) == 2:
+                y = 2000 + y if y < 70 else 1900 + y
+            if 1 <= mth <= 12 and 1 <= d <= 31:
+                return f"{y:04d}-{mth:02d}-{d:02d}"
         except Exception:
             return None
-    return None
 
 
 def parse_date(text: str) -> Optional[str]:
