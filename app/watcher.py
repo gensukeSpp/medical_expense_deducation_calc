@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Iterable
 
 from paddleocr import PaddleOCR
-from .ocr_pipeline import process_image
+from app.ocr_pipeline import process_image
 
 LOG = logging.getLogger("ocr_watcher")
 
