@@ -100,20 +100,40 @@ def extract_date_from_text(text: str) -> Optional[str]:
         except Exception:
             return None
     else:
-        # small YY forms like 26/1/5 or 26/01/15 => assume YY/MM/DD where YY is 2-digit year
-        m2 = re.search(r"(\d{1,2})/(\d{1,2})/(\d{1,2})", text)
+        # handle forms like M/D/YY, D/M/YY, or Y/M/D
+        m2 = re.search(r"(\d{1,4})/(\d{1,2})/(\d{1,4})", text)
         if m2:
-            y_part, m_part, d_part = m2.groups()
-            if len(y_part) == 2:
-                yy = int(y_part)
-                y = 2000 + yy if yy < 70 else 1900 + yy
-            elif len(y_part) == 1:
-                # Fallback for single-digit era year (e.g. Reiwa 1 = 2019)
-                yy = int(y_part)
-                y = 2018 + yy
-            else:
-                y = int(y_part)
-            return f"{y}-{int(m_part):02d}-{int(d_part):02d}"
+            a, b, c = m2.groups()
+            try:
+                # if a looks like a full year (4 digits), treat as year/month/day
+                if len(a) == 4:
+                    y = int(a)
+                    mth = int(b)
+                    d = int(c)
+                # if c looks like full year, assume a/mth and b/day
+                elif len(c) == 4:
+                    y = int(c)
+                    mth = int(a)
+                    d = int(b)
+                # if c is 2-digit, assume it's year (YY)
+                elif len(c) == 2:
+                    yy = int(c)
+                    y = 2000 + yy if yy < 70 else 1900 + yy
+                    mth = int(a)
+                    d = int(b)
+                else:
+                    # fallback: prefer c as day if > 31 treat a as year
+                    if int(a) > 31:
+                        y = int(a)
+                        mth = int(b)
+                        d = int(c)
+                    else:
+                        y = int(c)
+                        mth = int(a)
+                        d = int(b)
+                return f"{y}-{mth:02d}-{d:02d}"
+            except Exception:
+                return None
     return None
 
 
@@ -141,3 +161,10 @@ class RealLLMClient:
 
     def extract_fields(self, ocr_json: Dict[str, Any]) -> Dict[str, Any]:
         raise NotImplementedError("Real client not implemented in this branch")
+
+
+def get_llm_client(model_name: str):
+    """Factory function to get LLM client based on model name."""
+    if model_name == "mock":
+        return MockLLMClient()
+    return RealLLMClient(model_name)

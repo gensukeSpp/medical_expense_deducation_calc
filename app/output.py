@@ -1,9 +1,17 @@
 """Output helper utilities for writing OCR JSON results safely."""
+
 from pathlib import Path
 import json
 import tempfile
 import os
 import time
+
+
+def write_json(path: Path, obj: dict):
+    """Write JSON to file, creating parent directories if needed."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(obj, f, ensure_ascii=False, indent=2)
 
 
 def write_json_atomic(path: Path, data, retries: int = 3, delay: float = 0.1) -> None:

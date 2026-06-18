@@ -1,8 +1,8 @@
 """Normalization utilities for amount and date parsing."""
+
 from __future__ import annotations
 import re
 from typing import Optional
-from datetime import datetime
 
 
 def parse_amount(text: str) -> Optional[int]:
@@ -33,6 +33,7 @@ def parse_amount(text: str) -> Optional[int]:
     for k, v in mapping.items():
         if k in t:
             return v
+
     # normalize fullwidth digits and punctuation to ascii
     def normalize_fw(s: str) -> str:
         res = []
@@ -41,13 +42,13 @@ def parse_amount(text: str) -> Optional[int]:
             # fullwidth ０-９ -> 0-9
             if 0xFF10 <= code <= 0xFF19:
                 res.append(chr(code - 0xFEE0))
-            elif ch == '，' or ch == '、':
-                res.append(',')
-            elif ch == '．':
-                res.append('.')
+            elif ch == "，" or ch == "、":
+                res.append(",")
+            elif ch == "．":
+                res.append(".")
             else:
                 res.append(ch)
-        return ''.join(res)
+        return "".join(res)
 
     norm = normalize_fw(t)
     m2 = re.search(r"([0-9,]+)\s*円", norm)
@@ -97,3 +98,39 @@ def parse_date(text: str) -> Optional[str]:
         except Exception:
             return None
     return None
+
+
+def normalize_extracted(extracted: dict, ocr_json: dict) -> dict:
+    """Normalize extracted fields (amount, date) from LLM output."""
+    # amount
+    amount = extracted.get("amount")
+    # If amount already numeric, keep. If string, try to parse.
+    if isinstance(amount, str):
+        amount = parse_amount(amount)
+    elif amount is None:
+        # try to infer from OCR text_lines
+        lines = ocr_json.get("text_lines") or [
+            w.get("text") for w in ocr_json.get("words", []) if w.get("text")
+        ]
+        # naive search
+        for ln in lines:
+            if "円" in ln or "万" in ln:
+                amount = parse_amount(ln)
+                if amount:
+                    break
+    # date
+    date = extracted.get("date")
+    if isinstance(date, str):
+        norm_date = parse_date(date)
+        date = norm_date
+    elif date is None:
+        lines = ocr_json.get("text_lines") or [
+            w.get("text") for w in ocr_json.get("words", []) if w.get("text")
+        ]
+        for ln in lines:
+            if any(ch in ln for ch in ["年", "/", "-"]):
+                d = parse_date(ln)
+                if d:
+                    date = d
+                    break
+    return {**extracted, "amount": amount, "date": date}
