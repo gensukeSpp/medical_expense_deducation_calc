@@ -19,6 +19,8 @@ def setup_args():
     parser.add_argument("--input-dir", default=str(Path.home() / "Downloads" / "receipts"))
     parser.add_argument("--image-name", default=None, help="Process a single image by name")
     parser.add_argument("--output-dir", default="output_json", help="JSON output directory")
+    parser.add_argument("--input-json", default=None, help="Process a single OCR JSON file (path)")
+    parser.add_argument("--model", default="mock", help="LLM model name or 'mock' for local heuristic")
     parser.add_argument(
         "--watch", action="store_true", help="Run folder watcher instead of single-file processing"
     )

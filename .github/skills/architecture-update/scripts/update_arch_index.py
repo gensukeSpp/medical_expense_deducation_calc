@@ -75,6 +75,59 @@ This directory contains dated snapshots of the project's high-level architecture
         file_link = f"{name}"
         rows.append(f"| {date} | {summary} | [{file_link}]({file_link}) |")
 
+    # If README exists and already contains a table, preserve existing rows and append only new entries
+    if README.exists():
+        text = README.read_text(encoding="utf-8")
+        table_header = "| Date | Summary | File |"
+        if table_header in text:
+            # find start of table header
+            start_idx = text.index(table_header)
+            # find end of table: look for the first blank line after the header/separator
+            after_table = text[start_idx:]
+            lines_after = after_table.splitlines()
+            # header line + separator line consumed, rows start at index 2
+            existing_rows = []
+            for ln in lines_after[2:]:
+                if ln.strip() == "":
+                    break
+                existing_rows.append(ln)
+            # extract filenames already present
+            import re as _re
+
+            existing_files = set()
+            for ln in existing_rows:
+                m = _re.search(r"\]\(([^)]+)\)", ln)
+                if m:
+                    existing_files.add(m.group(1))
+
+            # keep existing rows and append only rows with new filenames
+            new_rows = []
+            for r in rows:
+                m = _re.search(r"\]\(([^)]+)\)", r)
+                fname = m.group(1) if m else None
+                if fname and fname not in existing_files:
+                    new_rows.append(r)
+
+            if not new_rows:
+                print(f"No new architecture entries to add to {README}")
+                return
+
+            # rebuild README: keep content up to end of existing table, then append new rows and the rest
+            # find end position of existing table in original text
+            # find index after existing rows
+            # compute number of lines to skip: header + separator + len(existing_rows)
+            orig_lines = text.splitlines()
+            # find header line index
+            hdr_idx = next(i for i, ln in enumerate(orig_lines) if ln.strip() == table_header)
+            end_idx = hdr_idx + 2 + len(existing_rows)
+            before = "\n".join(orig_lines[:end_idx])
+            after = "\n".join(orig_lines[end_idx:])
+            combined = before + "\n" + "\n".join(new_rows) + ("\n" + after if after else "\n")
+            README.write_text(combined, encoding="utf-8")
+            print(f"Appended {len(new_rows)} new entries to {README}")
+            return
+
+    # default: write full content (no existing table found)
     content = header + "\n".join(rows) + "\n"
     README.write_text(content, encoding="utf-8")
     print(f"Updated {README} with {len(entries)} entries")

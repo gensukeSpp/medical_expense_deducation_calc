@@ -9,6 +9,7 @@ wheels/
 # Virtual environments
 .venv
 .serena
+.pytest_cache/
 output_json/
 failed/
 processed/
