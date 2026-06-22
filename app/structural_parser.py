@@ -10,7 +10,7 @@ from app.llm_extractor import get_llm_client
 from app.normalization import normalize_extracted
 from app.output import write_json_atomic
 from app.error_logging import append_error
-from app.db import insert_receipt, get_clinic_by_name, upsert_clinic
+from app.db import insert_receipt, get_or_create_clinic
 
 
 def process_input_json(
@@ -65,18 +65,19 @@ def process_input_json(
     # DB persistence
     if db_path:
         try:
+            """
+            競合状態（レースコンディション）と外部キー制約違反のリスクがあります。\n\n
+            現在の実装では、get_clinic_by_name でクリニックの存在を確認した後に upsert_clinic を呼び出す「Check-then-Act」パターンを採用しています。\n
+            マルチプロセスや並列実行環境において、同じクリニック名のデータがほぼ同時に処理された場合、既存のクリニックIDが新しいUUIDに更新されてしまい、既にそのクリニックIDを参照している receipts レコードが存在すると、外部キー制約違反（IntegrityError）が発生して処理がクラッシュします。\n\n
+            新しく追加した get_or_create_clinic を使用して、アトミックにクリニックIDを取得・作成するように修正してください。
+            """
             clinic_name = structured.get("clinic")
             clinic_id = None
             if clinic_name:
                 clinic_name = str(clinic_name).strip()
                 if clinic_name:
-                    # check if clinic exists, otherwise create it
-                    clinic = get_clinic_by_name(db_path, clinic_name)
-                    if clinic:
-                        clinic_id = clinic["id"]
-                    else:
-                        clinic_id = str(uuid.uuid4())
-                        upsert_clinic(db_path, clinic_id, clinic_name)
+                    # check if clinic exists, otherwise create it safely
+                    clinic_id = get_or_create_clinic(db_path, clinic_name)
 
             receipt_id = str(uuid.uuid4())
             insert_receipt(
@@ -98,4 +99,3 @@ def process_input_json(
             )
 
     return structured
-

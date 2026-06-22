@@ -1,7 +1,7 @@
 import pytest
 from pathlib import Path
 
-from medical_exp_deducation_calc.app.image_resize import resize_image_for_ocr
+from app.image_resize import resize_image_for_ocr
 
 
 def test_resize_nonexistent(monkeypatch, tmp_path, capsys):
@@ -13,7 +13,7 @@ def test_resize_nonexistent(monkeypatch, tmp_path, capsys):
     output_path = tmp_path / "out.jpg"
 
     # monkeypatch cv2.imread to simulate unreadable image
-    import medical_exp_deducation_calc.app.image_resize as image_resize
+    import app.image_resize as image_resize
 
     monkeypatch.setattr(image_resize.cv2, "imread", lambda p: None)
 

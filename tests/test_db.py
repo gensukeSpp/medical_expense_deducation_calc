@@ -5,7 +5,7 @@ import json
 import pytest
 from pathlib import Path
 
-from medical_exp_deducation_calc.app.db import (
+from app.db import (
     get_db_connection,
     insert_receipt,
     get_receipt,
@@ -15,7 +15,7 @@ from medical_exp_deducation_calc.app.db import (
     add_correction,
     insert_user,
 )
-from medical_exp_deducation_calc.app.db_migrations import run_migrations
+from app.db_migrations import run_migrations
 
 SCHEMA_PATH = "docs/schema.sql"
 

@@ -28,8 +28,11 @@ def run_migrations(db_path: str | Path, schema_path: str | Path) -> None:
         schema_sql = f.read()
 
     # executescript handles multiple statements and commits implicitly
-    with get_db_connection(db_path) as conn:
+    conn = get_db_connection(db_path)
+    try:
         conn.executescript(schema_sql)
+    finally:
+        conn.close()
     print("Database initialization complete.")
 
 
