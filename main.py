@@ -42,12 +42,18 @@ def main():
     if args.input_json:
         from app.structural_parser import process_input_json
 
-        structured = process_input_json(args.input_json, model=args.model, output_dir=args.output_dir)
+        structured = process_input_json(
+            args.input_json,
+            model=args.model,
+            output_dir=args.output_dir,
+            db_path=args.db_path,
+        )
         if structured is None:
             print(f"Failed to process input JSON: {args.input_json}")
         else:
             print(f"Structured data written for {args.input_json}")
         return
+
 
     # 単一画像の処理
     from app.processor import process_single_image

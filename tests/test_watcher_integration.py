@@ -5,7 +5,7 @@ import threading
 import time
 import json
 
-from medical_exp_deducation_calc.app.watcher import scan_and_process
+from app.watcher import scan_and_process
 
 
 class FakeOCR:

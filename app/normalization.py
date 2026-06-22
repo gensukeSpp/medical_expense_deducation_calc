@@ -12,11 +12,29 @@ def parse_amount(text: str) -> Optional[int]:
     """
     if not text:
         return None
-    t = str(text)
+
+    # normalize fullwidth digits and punctuation to ascii
+    def normalize_fw(s: str) -> str:
+        res = []
+        for ch in s:
+            code = ord(ch)
+            # fullwidth ０-９ -> 0-9
+            if 0xFF10 <= code <= 0xFF19:
+                res.append(chr(code - 0xFEE0))
+            elif ch == "，" or ch == "、":
+                res.append(",")
+            elif ch == "．":
+                res.append(".")
+            else:
+                res.append(ch)
+        return "".join(res)
+
+    t = normalize_fw(str(text))
+
     # direct numeric with yen
-    m = re.search(r"([0-9,，]+)\s*円", t)
+    m = re.search(r"([0-9,]+)\s*円", t)
     if m:
-        s = m.group(1).replace(",", "").replace("，", "")
+        s = m.group(1).replace(",", "")
         try:
             return int(s)
         except Exception:
@@ -59,57 +77,7 @@ def parse_amount(text: str) -> Optional[int]:
         val += temp
         return val
 
-    # normalize fullwidth digits and punctuation to ascii
-    def normalize_fw(s: str) -> str:
-        res = []
-        for ch in s:
-            code = ord(ch)
-            # fullwidth ０-９ -> 0-9
-            if 0xFF10 <= code <= 0xFF19:
-                res.append(chr(code - 0xFEE0))
-            elif ch == "，" or ch == "、":
-                res.append(",")
-            elif ch == "．":
-                res.append(".")
-            else:
-                res.append(ch)
-        return "".join(res)
-
-    norm = normalize_fw(t)
-    # M/D/YY, YY/MM/DD, or DD/MM/YYYY
-    m2 = re.search(r"(\d{1,4})/(\d{1,2})/(\d{1,4})", t)
-    if m2:
-        a, b, c = m2.groups()
-        try:
-            # Try YYYY/MM/DD or YY/MM/DD first
-            if len(a) == 4 or (len(a) == 2 and 1 <= int(b) <= 12 and 1 <= int(c) <= 31):
-                y = int(a)
-                if len(a) == 2:
-                    y = 2000 + y if y < 70 else 1900 + y
-                mth = int(b)
-                d = int(c)
-                if 1 <= mth <= 12 and 1 <= d <= 31:
-                    return f"{y:04d}-{mth:02d}-{d:02d}"
-
-            # Try MM/DD/YY or MM/DD/YYYY
-            mth = int(a)
-            d = int(b)
-            y = int(c)
-            if len(c) == 2:
-                y = 2000 + y if y < 70 else 1900 + y
-            if 1 <= mth <= 12 and 1 <= d <= 31:
-                return f"{y:04d}-{mth:02d}-{d:02d}"
-
-            # Try DD/MM/YY or DD/MM/YYYY
-            d = int(a)
-            mth = int(b)
-            y = int(c)
-            if len(c) == 2:
-                y = 2000 + y if y < 70 else 1900 + y
-            if 1 <= mth <= 12 and 1 <= d <= 31:
-                return f"{y:04d}-{mth:02d}-{d:02d}"
-        except Exception:
-            return None
+    return None
 
 
 def parse_date(text: str) -> Optional[str]:
