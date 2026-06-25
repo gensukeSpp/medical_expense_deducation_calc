@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>抽出データ一覧</title>
+</head>
+<body>
+    <h1>抽出データ一覧</h1>
+    {% if items %}
+        <table border="1">
+            <thead>
+                <tr>
+                    <th>表示名</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                <tr>
+                    <td><a href="{{ item.file_stem }}">{{ item.display_name }}</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>データがありません</p>
+    {% endif %}
+</body>
+</html>

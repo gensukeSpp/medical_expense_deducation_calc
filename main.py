@@ -54,11 +54,21 @@ def main():
             print(f"Structured data written for {args.input_json}")
         return
 
-
     # 単一画像の処理
     from app.processor import process_single_image
 
     process_single_image(args, input_dir, output_dir, ocr)
+
+    # Web UI サーバー起動
+    if args.serve:
+        import uvicorn
+        from app.web.server import create_app
+
+        app = create_app(output_dir=args.output_dir, db_path=args.db_path)
+
+        print(f"Starting Web UI at http://{args.host}:{args.port}")
+        uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+        return
 
 
 if __name__ == "__main__":

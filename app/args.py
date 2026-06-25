@@ -21,9 +21,7 @@ def setup_args():
     parser.add_argument("--output-dir", default="output_json", help="JSON output directory")
     parser.add_argument("--input-json", default=None, help="Process a single OCR JSON file (path)")
     parser.add_argument("--model", default="mock", help="LLM model name or 'mock' for local heuristic")
-    parser.add_argument(
-        "--watch", action="store_true", help="Run folder watcher instead of single-file processing"
-    )
+    parser.add_argument("--watch", action="store_true", help="Run folder watcher instead of single-file processing")
     parser.add_argument(
         "--use-watchdog",
         action="store_true",
@@ -38,8 +36,10 @@ def setup_args():
         default=None,
         help="SQLite database path (e.g., 'data/db.sqlite3'). If set, results will be persisted to the DB.",
     )
+    parser.add_argument("--serve", action="store_true", help="Start Web UI server")
+    parser.add_argument("--host", default="127.0.0.1", help="Web server host")
+    parser.add_argument("--port", type=int, default=8000, help="Web server port")
     args = parser.parse_args()
-
 
     return args
 
