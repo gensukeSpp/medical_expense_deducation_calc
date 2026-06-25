@@ -64,7 +64,7 @@ def main():
         import uvicorn
         from app.web.server import create_app
 
-        app = create_app()
+        app = create_app(output_dir=args.output_dir, db_path=args.db_path)
 
         print(f"Starting Web UI at http://{args.host}:{args.port}")
         uvicorn.run(app, host=args.host, port=args.port, log_level="info")

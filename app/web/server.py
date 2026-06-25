@@ -9,7 +9,7 @@ from app.normalization import normalize_extracted
 from app.db import insert_receipt, get_receipt, add_correction
 from app.error_logging import append_error
 
-templates = Jinja2Templates(directory="app/web/templates")
+templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
 
 def create_app(output_dir: str = "output_json", db_path: str | None = None) -> FastAPI:
@@ -45,7 +45,8 @@ def create_app(output_dir: str = "output_json", db_path: str | None = None) -> F
                 append_error(output_dir, file_path, str(e), "read_index", {})
                 continue
 
-        return templates.TemplateResponse("index.html", {"items": items, "request": request})
+        # TemplateResponse のシグネチャは TemplateResponse(request, name, context, ...)
+        return templates.TemplateResponse(request=request, name="index.html", context={"items": items})
 
     @app.get("/{file_stem}", response_class=HTMLResponse)
     async def read_item(
@@ -68,9 +69,11 @@ def create_app(output_dir: str = "output_json", db_path: str | None = None) -> F
             ("date", {"label": "発行日", "value": data.get("date", "")}),
         ]
         # Jinja2のキャッシュエラーを避けるために、タプル内の辞書を文字列に変換
-        fields = [(k, str(v)) for k, v in fields]
+        # fields = [(k, str(v)) for k, v in fields]
 
-        return templates.TemplateResponse("detail.html", {"file_stem": file_stem, "fields": fields})
+        return templates.TemplateResponse(
+            request=request, name="detail.html", context={"file_stem": file_stem, "fields": fields}
+        )
 
     @app.put("/{file_stem}")
     async def update_item(
@@ -80,12 +83,22 @@ def create_app(output_dir: str = "output_json", db_path: str | None = None) -> F
         db_path: Path | None = Depends(get_db_path),
     ):
         """修正処理"""
-        # リクエストボディから修正値を取得
-        form_data = await request.form()
+        # リクエストボディから修正値を取得（JSONとFormデータの両方に対応）
+        content_type = request.headers.get("content-type", "")
         updates = {}
-        for key, value in form_data.items():
-            if key in ["name", "clinic", "amount", "date"]:
-                updates[key] = value
+        if "application/json" in content_type:
+            try:
+                json_data = await request.json()
+                for key, value in json_data.items():
+                    if key in ["name", "clinic", "amount", "date"]:
+                        updates[key] = value
+            except Exception:
+                pass
+        else:
+            form_data = await request.form()
+            for key, value in form_data.items():
+                if key in ["name", "clinic", "amount", "date"]:
+                    updates[key] = value
 
         # JSONファイルから現在値を読み取り
         file_path = output_dir / f"{file_stem}-structured_data.json"
@@ -93,6 +106,10 @@ def create_app(output_dir: str = "output_json", db_path: str | None = None) -> F
             raise HTTPException(status_code=404, detail="File not found")
 
         old_data = read_json(file_path)
+
+        # 先にJSONファイル更新用のデータを作成し、金額・日付を正規化
+        updated_data = {**old_data, **updates}
+        updated_data = normalize_extracted(updated_data, old_data)
 
         # DB処理
         if db_path:
@@ -110,13 +127,10 @@ def create_app(output_dir: str = "output_json", db_path: str | None = None) -> F
                     add_correction(db_path, f"{file_stem}-{field_name}", receipt_id, field_name, old_value, new_value)
             except Exception as e:
                 # エラー時は処理を継続し、エラーログに記録
-                append_error(output_dir, file_path, str(e), "update_item_db", {})
+                append_error(output_dir, str(file_path), str(e), "update_item_db", {})
                 pass
 
         # JSONファイル更新
-        updated_data = {**old_data, **updates}
-        # 金額・日付を正規化
-        updated_data = normalize_extracted(updated_data, old_data)
         write_json_atomic(file_path, updated_data)
 
         # 更新後の値を含むHTML断片を返却
