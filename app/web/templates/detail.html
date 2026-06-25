@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>詳細</title>
+</head>
+<body>
+    <h1>詳細</h1>
+    <form hx-put="{{ file_stem }}" hx-target="this" hx-swap="outerHTML">
+        {% for field_name, field_info in fields %}
+        <div>
+            <label>{{ field_info.label }}:</label>
+            <input type="text" name="{{ field_name }}" value="{{ field_info.value }}">
+        </div>
+        {% endfor %}
+        <button type="submit">修正</button>
+        <a href="/">戻る</a>
+    </form>
+</body>
+</html>
