@@ -14,8 +14,8 @@ The primary goal is to simplify data entry for medical expenses within a househo
 - **LLM Components**:
     - **Structural LLM**: Extracted text from OCR is formatted into a structured JSON representation (date, amount, items, etc.).
     - **Naming Extractor LLM**: Identifies and extracts the clinic name from raw OCR text.
-- **Data Management** (Planned):
-    - **SQLite**: Local database (`data/db.sqlite3`) to store receipts, clinic templates, coordinate correction offsets, and user modifications.
+- **Data Management**:
+    - **SQLite**: Local database (`data/db.sqlite3`) is used for storing receipts, clinic templates, coordinate correction offsets, and user modifications.
 
 ## Key Files & Directories
 
@@ -28,9 +28,9 @@ The primary goal is to simplify data entry for medical expenses within a househo
     - `app/structural_parser.py`: Parses the LLM structural outputs.
     - `app/normalization.py`: Normalizes text, amounts, dates, and clinic names.
     - `app/error_logging.py`: Centralized error logging utility.
+    - `app/services/`: Contains service-layer modules for handling business logic and cross-module interactions.
 - `tasks/`:
     - `tasks/issue_4/run_e2e.py`: E2E test runner validating the extraction output.
-    - `tasks/issue_18/ISSUE_18.md`: Task definition for implementing SQLite database storage.
 - `tests/`: Contains Unit and E2E test suites.
 - `要件定義書.md`: Core system requirements and functional specifications (Japanese).
 - `pyproject.toml`: Project configuration and dependency specifications.
@@ -63,11 +63,9 @@ python tasks/issue_4/run_e2e.py
 - E2E testing framework with mockup validations.
 
 ### Upcoming Tasks
-- **Issue 18: SQLite Database Persistence**
-  - Implement SQLite database schema (`data/db.sqlite3`) for storing receipts, clinics, templates, and corrections.
-  - Implement SQLite connection and CRUD API in `app/db.py`.
-  - Integrate database persistence in `app/structural_parser.py` and `main.py`.
-  - Provide database migration scripts in `app/db_migrations.py` or similar setup tools.
+- **Service Layer Refactoring**: Decouple business logic (OCR processing, coordinate correction, database interactions) from Web handlers and CLI entry points, as per SRP review recommendations.
+- **Enhanced Coordinate Correction**: Further refine coordinate search and user feedback loop based on real-world usage.
+- **Test Coverage Expansion**: Increase unit and integration test coverage for the new service layer.
 
 ## Development Conventions
 

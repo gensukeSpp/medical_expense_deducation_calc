@@ -28,10 +28,7 @@ def process_single_image(args: argparse.Namespace, input_dir: Path, output_dir: 
                 sys.exit(1)
         except AttributeError:
             # For older Python versions fallback
-            if (
-                input_dir.resolve() not in image_path.resolve().parents
-                and image_path.resolve() != input_dir.resolve()
-            ):
+            if input_dir.resolve() not in image_path.resolve().parents and image_path.resolve() != input_dir.resolve():
                 logging.error("image-name must be inside input-dir: %s", input_dir)
                 sys.exit(1)
 

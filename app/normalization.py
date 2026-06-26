@@ -128,9 +128,7 @@ def normalize_extracted(extracted: dict, ocr_json: dict) -> dict:
         amount = parse_amount(amount)
     elif amount is None:
         # try to infer from OCR text_lines
-        lines = ocr_json.get("text_lines") or [
-            w.get("text") for w in ocr_json.get("words", []) if w.get("text")
-        ]
+        lines = ocr_json.get("text_lines") or [w.get("text") for w in ocr_json.get("words", []) if w.get("text")]
         # naive search
         for ln in lines:
             if "円" in ln or "万" in ln:
@@ -143,9 +141,7 @@ def normalize_extracted(extracted: dict, ocr_json: dict) -> dict:
         norm_date = parse_date(date)
         date = norm_date
     elif date is None:
-        lines = ocr_json.get("text_lines") or [
-            w.get("text") for w in ocr_json.get("words", []) if w.get("text")
-        ]
+        lines = ocr_json.get("text_lines") or [w.get("text") for w in ocr_json.get("words", []) if w.get("text")]
         for ln in lines:
             if any(ch in ln for ch in ["年", "/", "-"]):
                 d = parse_date(ln)

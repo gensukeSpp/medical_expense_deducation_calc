@@ -7,6 +7,7 @@ This script scans docs/architecture for *.md (excluding README.md), extracts a D
 line or falls back to file mtime, and extracts a short summary from the top of each file.
 It then writes docs/architecture/README.md with a table of entries sorted by date (desc).
 """
+
 from pathlib import Path
 import re
 from datetime import datetime
