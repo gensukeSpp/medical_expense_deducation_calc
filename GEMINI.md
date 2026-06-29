@@ -56,8 +56,9 @@ python tasks/issue_4/run_e2e.py
 
 ## Current Progress & Upcoming Tasks
 
-### Implemented Features (as of 2026-06-18)
-- Complete pipeline integration (OCR + LLM Extraction + Normalization).
+### Implemented Features (as of 2026-06-29)
+- Complete pipeline integration (OCR + LLM Extraction + Normalization + Automatic Parsing).
+- Coordinate-based extraction correction using clinic-specific templates (proximity threshold: 20px).
 - CLI integration for model and input JSON file configuration.
 - Robust date, clinic name, and monetary value normalization.
 - E2E testing framework with mockup validations.

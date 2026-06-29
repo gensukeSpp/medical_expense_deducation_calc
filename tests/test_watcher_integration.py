@@ -42,9 +42,11 @@ def test_scan_and_process_run_once(tmp_path):
 
     assert processed_count == 1
 
-    # one JSON should be created
-    outputs = list(output_dir.glob("*_raw_data.json")) + list(output_dir.glob("*.json"))
-    assert len(outputs) == 1
+    # Two JSON files should be created: raw_data + structured_data
+    raw_outputs = list(output_dir.glob("*-raw_data.json"))
+    structured_outputs = list(output_dir.glob("*-raw_data-structured_data.json"))
+    assert len(raw_outputs) == 1
+    assert len(structured_outputs) == 1
 
     # original moved to processed
     assert (processed_dir / "test.jpg").exists()
@@ -105,9 +107,11 @@ def test_process_skips_file_still_writing(tmp_path):
         retries=0,
     )
     assert processed_count2 == 1
-    # output created
-    outputs = list(output_dir.glob("*_raw_data.json")) + list(output_dir.glob("*.json"))
-    assert len(outputs) == 1
+    # Two JSON files created: raw_data + structured_data
+    raw_outputs = list(output_dir.glob("*-raw_data.json"))
+    structured_outputs = list(output_dir.glob("*-raw_data-structured_data.json"))
+    assert len(raw_outputs) == 1
+    assert len(structured_outputs) == 1
     # moved to processed
     assert (processed_dir / "inprogress.jpg").exists()
 

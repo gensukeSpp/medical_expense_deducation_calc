@@ -19,6 +19,7 @@ from typing import Iterable
 
 from paddleocr import PaddleOCR
 from .ocr_pipeline import process_image
+from .structural_parser import process_input_json
 
 LOG = logging.getLogger("ocr_watcher")
 
@@ -63,6 +64,8 @@ def process_one(
     processed_dir: Path,
     failed_dir: Path,
     retries: int = 1,
+    model: str = "mock",
+    db_path: Path | str | None = None,
 ) -> bool:
     """Process a single image. Returns True on success, False on failure."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -104,6 +107,18 @@ def process_one(
             structured = process_image(image_path, output_json_path=output_json_path, ocr=ocr)
             LOG.info("Processed %s -> %s (%d items)", image_path, output_json_path, len(structured))
 
+            # Generate structured data from OCR raw data
+            try:
+                process_input_json(
+                    output_json_path,
+                    model=model,
+                    output_dir=output_dir,
+                    db_path=db_path,
+                )
+                LOG.info("Structured data generated for %s", output_json_path)
+            except Exception:
+                LOG.exception("Failed to generate structured data for %s", output_json_path)
+
             # Move original file to processed_dir
             dest = processed_dir / image_path.name
             # avoid overwriting existing file in processed_dir
@@ -137,6 +152,8 @@ def scan_and_process(
     failed_dir: Path,
     max_files: int | None = None,
     retries: int = 1,
+    model: str = "mock",
+    db_path: Path | str | None = None,
 ) -> int:
     """Scan input_dir and process found images. Returns number of processed files."""
     input_dir.mkdir(parents=True, exist_ok=True)
@@ -147,7 +164,10 @@ def scan_and_process(
         if max_files is not None and processed >= max_files:
             break
         try:
-            success = process_one(p, ocr, output_dir, processed_dir, failed_dir, retries=retries)
+            success = process_one(
+                p, ocr, output_dir, processed_dir, failed_dir,
+                retries=retries, model=model, db_path=db_path,
+            )
             if success:
                 processed += 1
         except Exception:
@@ -163,6 +183,8 @@ def run_loop(
     poll_interval: int = 10,
     run_once: bool = False,
     retries: int = 1,
+    model: str = "mock",
+    db_path: Path | str | None = None,
 ):
     LOG.info("Starting watcher: input=%s output=%s processed=%s", input_dir, output_dir, processed_dir)
 
@@ -170,7 +192,10 @@ def run_loop(
 
     while True:
         try:
-            n = scan_and_process(input_dir, ocr, output_dir, processed_dir, failed_dir, retries=retries)
+            n = scan_and_process(
+                input_dir, ocr, output_dir, processed_dir, failed_dir,
+                retries=retries, model=model, db_path=db_path,
+            )
             if n > 0:
                 LOG.info("Processed %d files this cycle", n)
             else:
@@ -190,6 +215,8 @@ def run_watchdog(
     failed_dir: Path,
     poll_interval: int = 10,
     retries: int = 1,
+    model: str = "mock",
+    db_path: Path | str | None = None,
 ):
     """Run an inotify-style watcher using watchdog. Falls back to polling if watchdog isn't available."""
     try:
@@ -206,6 +233,8 @@ def run_watchdog(
             poll_interval=poll_interval,
             run_once=False,
             retries=retries,
+            model=model,
+            db_path=db_path,
         )
         return
 
@@ -226,7 +255,10 @@ def run_watchdog(
                             if not is_file_stable(p, interval=0.5, checks=4):
                                 LOG.info("New file not stable after wait, skipping for now: %s", p)
                                 return
-                            process_one(p, ocr, output_dir, processed_dir, failed_dir, retries=retries)
+                            process_one(
+                                p, ocr, output_dir, processed_dir, failed_dir,
+                                retries=retries, model=model, db_path=db_path,
+                            )
 
                         t = threading.Thread(target=_delayed, daemon=True)
                         t.start()

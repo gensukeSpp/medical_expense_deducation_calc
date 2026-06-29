@@ -12,6 +12,10 @@ from app.normalization import parse_amount, parse_date
 
 
 def normalize_lines(ocr_json: Dict[str, Any]) -> List[str]:
+    # Handle list format from ocr_pipeline: [{text, confidence, box}, ...]
+    if isinstance(ocr_json, list):
+        return [unicodedata.normalize("NFKC", str(entry.get("text", ""))) for entry in ocr_json if entry.get("text")]
+
     lines = ocr_json.get("text_lines") or []
     if not lines and "words" in ocr_json:
         lines = [w.get("text", "") for w in ocr_json.get("words", [])]

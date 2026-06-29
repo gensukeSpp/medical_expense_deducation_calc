@@ -24,6 +24,8 @@ def main():
                 failed_dir,
                 poll_interval=args.poll_interval,
                 retries=args.retries,
+                model=args.model,
+                db_path=args.db_path,
             )
         else:
             print("Starting watcher (polling mode)...")
@@ -35,6 +37,8 @@ def main():
                 poll_interval=args.poll_interval,
                 run_once=False,
                 retries=args.retries,
+                model=args.model,
+                db_path=args.db_path,
             )
         return
 

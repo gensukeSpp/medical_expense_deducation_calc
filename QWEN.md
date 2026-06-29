@@ -20,9 +20,11 @@ Lint:     Black (line-length 119)
 ```
 input image → image_resize (short side = 960px, grayscale)
             → PaddleOCR (lang="japan")
-            → structural_parser (LLM or mock heuristic)
-            → normalization (date, amount, clinic name)
-            → output JSON + SQLite persistence
+            → process_input_json (auto via watcher/processor)
+                → MockLLMClient or LLM extraction (heuristic / structured LLM)
+                → (optional) template proximity search (20px, Mock only)
+                → normalization (date, amount, clinic name)
+            → output *-structured_data.json + SQLite persistence
             → Web UI (confirm/correct via FastAPI + htmx)
 ```
 
@@ -41,13 +43,13 @@ input image → image_resize (short side = 960px, grayscale)
 | `app/processor.py` | Single-image processing pipeline orchestrator |
 | `app/db.py` | SQLite CRUD: receipts, corrections, clinic templates |
 | `app/error_logging.py` | Centralized error logging |
-| `app/coord_search.py` | Coordinate correction / search logic |
+| `app/coord_search.py` | Coordinate search: text similarity + box proximity (20px) |
 | `app/template_feedback.py` | User feedback → template learning |
 | `app/prompts.py` | LLM prompt templates |
 | `app/services/receipt_service.py` | Service layer: business logic orchestration |
 | `app/web/server.py` | FastAPI Web UI (review/correct extracted data) |
 | `app/web/templates/` | Jinja2 templates for Web UI |
-| `tests/` | Unit + integration + E2E test suites (10 test files) |
+| `tests/` | Unit + integration + E2E test suites (11 test files) |
 | `tasks/issue_N/` | Issue-specific task plans and E2E runners |
 | `docs/` | Architecture docs, schema definitions (`schema.sql`) |
 | `pyproject.toml` | Project config, dependencies, Black config |
@@ -138,8 +140,9 @@ Convention: run Black before committing. Config in `pyproject.toml` (line-length
 - Service layer: `app/services/receipt_service.py`
 - Coordinate correction + user feedback loop
 - E2E testing framework
+- **Pipeline integration**: watcher / single-image auto-generates structured data from OCR raw data
+- **Coordinate proximity threshold** (20px): template-based extraction for MockLLMClient
 
 ### In Progress / Upcoming
 - Template correction value learning (real-world data)
-- Coordinate-to-field mapping refinement
-- Expanded test coverage for service layer
+- RealLLMClient integration

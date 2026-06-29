@@ -49,6 +49,20 @@ def process_single_image(args: argparse.Namespace, input_dir: Path, output_dir: 
                 logging.info("Saved 1 item to %s", output_json_path)
             else:
                 logging.info("Saved %d items to %s", len(structured), output_json_path)
+
+            # Generate structured data from OCR raw data
+            try:
+                from app.structural_parser import process_input_json
+
+                process_input_json(
+                    output_json_path,
+                    model=args.model,
+                    output_dir=output_dir,
+                    db_path=args.db_path,
+                )
+                logging.info("Structured data generated for %s", output_json_path)
+            except Exception:
+                logging.exception("Failed to generate structured data for %s", output_json_path)
         except Exception:
             logging.exception("Processing failed for %s", image_path)
             sys.exit(1)
