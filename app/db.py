@@ -220,7 +220,6 @@ def upsert_template(
 
 def add_correction(
     db_path: str | Path,
-    correction_id: str,
     receipt_id: str,
     field_name: str,
     old_value: str | None,
@@ -231,13 +230,15 @@ def add_correction(
 
     Args:
         db_path: Path to the SQLite database.
-        correction_id: UUID string.
         receipt_id: ID of the receipt to correct.
         field_name: The field name being corrected (e.g. 'amount', 'date').
         old_value: Old value before correction.
         new_value: New corrected value.
         user_id: Optional ID of the user who made the correction.
     """
+    import uuid
+
+    correction_id = str(uuid.uuid4())
     conn = get_db_connection(db_path)
     try:
         with conn:
@@ -292,6 +293,120 @@ def insert_user(db_path: str | Path, user_id: str, name: str) -> None:
             conn.execute(
                 "INSERT INTO users (id, name) VALUES (?, ?)",
                 (user_id, name),
+            )
+    finally:
+        conn.close()
+
+
+def get_receipt_by_source_path(db_path: str | Path, source_path: str) -> Optional[Dict[str, Any]]:
+    """Retrieve a receipt by its source_path.
+
+    Args:
+        db_path: Path to the SQLite database.
+        source_path: The source path stored in the receipts table.
+
+    Returns:
+        Optional[Dict[str, Any]]: The receipt row as a dict with JSON fields decoded,
+                                  or None if not found.
+    """
+    conn = get_db_connection(db_path)
+    try:
+        """
+        拡張子が異なる場合でも、ファイル名（stem）が一致すればマッチするように、LIKE 検索を用いたフォールバック処理を追加する。\n
+        """
+        stem = Path(source_path).stem
+        cursor = conn.execute(
+            """
+            SELECT id, source_path, ocr_json, normalized_json, clinic_id, created_at
+            FROM receipts
+            WHERE source_path = ? OR source_path LIKE ?
+            """,
+            (source_path, f"%/{stem}.%"),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+
+        result = dict(row)
+        if result["ocr_json"]:
+            result["ocr_json"] = json.loads(result["ocr_json"])
+        if result["normalized_json"]:
+            result["normalized_json"] = json.loads(result["normalized_json"])
+        return result
+    finally:
+        conn.close()
+
+
+def get_latest_template_by_clinic(db_path: str | Path, clinic_id: str) -> Optional[Dict[str, Any]]:
+    """Retrieve the latest template (highest version) for a clinic.
+
+    Args:
+        db_path: Path to the SQLite database.
+        clinic_id: The clinic ID.
+
+    Returns:
+        Optional[Dict[str, Any]]: The template row as a dict with coords_corrections decoded,
+                                  or None if no template exists.
+    """
+    conn = get_db_connection(db_path)
+    try:
+        cursor = conn.execute(
+            """
+            SELECT id, clinic_id, version, coords_corrections, created_at
+            FROM templates
+            WHERE clinic_id = ?
+            ORDER BY version DESC
+            LIMIT 1
+            """,
+            (clinic_id,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+
+        result = dict(row)
+        if result["coords_corrections"]:
+            result["coords_corrections"] = json.loads(result["coords_corrections"])
+        return result
+    finally:
+        conn.close()
+
+
+def insert_template_history(
+    db_path: str | Path,
+    history_id: str,
+    template_id: str,
+    clinic_id: str,
+    version: int,
+    coords_corrections: Dict[str, Any] | None,
+    changed_fields: str | None,
+    change_reason: str = "user_correction",
+    receipt_id: str | None = None,
+) -> None:
+    """Insert a template history record before updating the template.
+
+    Args:
+        db_path: Path to the SQLite database.
+        history_id: UUID string for the history record.
+        template_id: The template ID.
+        clinic_id: The clinic ID.
+        version: The version number at the time of this snapshot.
+        coords_corrections: The coords_corrections dict to snapshot.
+        changed_fields: JSON string of field names that changed.
+        change_reason: Reason for the change. Defaults to 'user_correction'.
+        receipt_id: Optional receipt ID associated with the change.
+    """
+    coords_str = json.dumps(coords_corrections, ensure_ascii=False) if coords_corrections else None
+    conn = get_db_connection(db_path)
+    try:
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO template_history
+                    (id, template_id, clinic_id, version, coords_corrections, changed_fields, change_reason, receipt_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (history_id, template_id, clinic_id, version, coords_str, changed_fields, change_reason, receipt_id),
             )
     finally:
         conn.close()

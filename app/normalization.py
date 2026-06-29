@@ -5,6 +5,21 @@ import re
 from typing import Optional
 
 
+def normalize_text(text: str) -> str:
+    """Normalize text for comparison: fullwidth to halfwidth, lowercase, strip whitespace."""
+    if not text:
+        return ""
+    
+    # Fullwidth to halfwidth
+    text = "".join(chr(ord(c) - 0xFEE0) if 0xFF10 <= ord(c) <= 0xFF19 else c for c in text)
+    text = "".join(chr(ord(c) - 0xFEE0) if 0xFF21 <= ord(c) <= 0xFF3A else c for c in text)
+    text = "".join(chr(ord(c) - 0xFEE0) if 0xFF41 <= ord(c) <= 0xFF5A else c for c in text)
+    
+    # Strip non-alphanumeric and lowercase
+    text = re.sub(r"[^\w]", "", text).lower()
+    return text
+
+
 def parse_amount(text: str) -> Optional[int]:
     """Parse a Japanese-style amount string into integer JPY.
     Returns None if parsing fails.
@@ -128,9 +143,7 @@ def normalize_extracted(extracted: dict, ocr_json: dict) -> dict:
         amount = parse_amount(amount)
     elif amount is None:
         # try to infer from OCR text_lines
-        lines = ocr_json.get("text_lines") or [
-            w.get("text") for w in ocr_json.get("words", []) if w.get("text")
-        ]
+        lines = ocr_json.get("text_lines") or [w.get("text") for w in ocr_json.get("words", []) if w.get("text")]
         # naive search
         for ln in lines:
             if "円" in ln or "万" in ln:
@@ -143,9 +156,7 @@ def normalize_extracted(extracted: dict, ocr_json: dict) -> dict:
         norm_date = parse_date(date)
         date = norm_date
     elif date is None:
-        lines = ocr_json.get("text_lines") or [
-            w.get("text") for w in ocr_json.get("words", []) if w.get("text")
-        ]
+        lines = ocr_json.get("text_lines") or [w.get("text") for w in ocr_json.get("words", []) if w.get("text")]
         for ln in lines:
             if any(ch in ln for ch in ["年", "/", "-"]):
                 d = parse_date(ln)

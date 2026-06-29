@@ -43,3 +43,18 @@ CREATE TABLE IF NOT EXISTS corrections (
     FOREIGN KEY (receipt_id) REFERENCES receipts(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 );
+
+CREATE TABLE IF NOT EXISTS template_history (
+    id TEXT PRIMARY KEY,
+    template_id TEXT NOT NULL,
+    clinic_id TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    coords_corrections TEXT,
+    changed_fields TEXT,
+    change_reason TEXT DEFAULT 'user_correction',
+    receipt_id TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE CASCADE,
+    FOREIGN KEY (clinic_id) REFERENCES clinics(id) ON DELETE CASCADE,
+    FOREIGN KEY (receipt_id) REFERENCES receipts(id) ON DELETE SET NULL
+);

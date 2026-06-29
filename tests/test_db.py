@@ -129,10 +129,8 @@ def test_add_correction(temp_db: Path) -> None:
     normalized_json = {"amount": 1000, "date": "2026-06-18"}
     insert_receipt(temp_db, receipt_id, "img.png", {}, normalized_json, clinic_id)
 
-    correction_id = "corr-1"
     add_correction(
         db_path=temp_db,
-        correction_id=correction_id,
         receipt_id=receipt_id,
         field_name="amount",
         old_value="1000",
@@ -142,7 +140,8 @@ def test_add_correction(temp_db: Path) -> None:
 
     # Check correction insertion
     with get_db_connection(temp_db) as conn:
-        row = conn.execute("SELECT * FROM corrections WHERE id = ?", (correction_id,)).fetchone()
+        # Since correction_id is generated internally, get the last inserted correction
+        row = conn.execute("SELECT * FROM corrections ORDER BY rowid DESC LIMIT 1").fetchone()
         assert row is not None
         assert row["receipt_id"] == receipt_id
         assert row["field_name"] == "amount"
@@ -161,7 +160,6 @@ def test_add_correction_nonexistent_receipt(temp_db: Path) -> None:
     with pytest.raises(ValueError, match="Receipt with ID .* does not exist"):
         add_correction(
             db_path=temp_db,
-            correction_id="corr-99",
             receipt_id="nonexistent-receipt",
             field_name="amount",
             old_value="1000",

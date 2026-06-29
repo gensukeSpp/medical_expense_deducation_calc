@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>座標検出エラー</title>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .error-box {
+            border: 2px solid #dc3545;
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 20px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .error-box h2 {
+            margin-top: 0;
+        }
+        .warning-icon {
+            font-size: 48px;
+            display: block;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        a {
+            text-decoration: none;
+            color: #007bff;
+        }
+        .updated-values {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            border-radius: 4px;
+            color: #155724;
+        }
+    </style>
+</head>
+<body>
+    <div class="error-box">
+        <span class="warning-icon">&#9888;</span>
+        <h2>座標を検出できませんでした</h2>
+        <p>以下の項目について、修正前の値に対応する領収書上の座標が特定できませんでした。</p>
+        <ul>
+            {% for field in coord_errors %}
+            <li><strong>{{ field }}</strong></li>
+            {% endfor %}
+        </ul>
+        <p>考えられる原因:</p>
+        <ul>
+            <li>修正前の値が OCR 結果に含まれていなかった</li>
+            <li>OCR のテキスト認識精度が低く、一致する文字列が見つからなかった</li>
+            <li>手動で入力された値である</li>
+        </ul>
+        <p>修正内容は JSON ファイルに保存されていますが、テンプレートの座標補正値は更新されていません。</p>
+    </div>
+
+    <div class="updated-values">
+        <h3>更新された値</h3>
+        <ul>
+            {% for key, value in updated_data.items() %}
+            <li><strong>{{ key }}:</strong> {{ value }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <a href="/{{ file_stem }}">&#8592; 詳細ページに戻る</a>
+</body>
+</html>

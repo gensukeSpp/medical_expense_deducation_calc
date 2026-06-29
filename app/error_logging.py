@@ -7,9 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict
 
 
-def append_error(
-    output_dir: Path, file: str, error: str, step: str, context: Dict[str, Any] | None = None
-) -> None:
+def append_error(output_dir: Path, file: str, error: str, step: str, context: Dict[str, Any] | None = None) -> None:
     """Append an error entry to the errors.log file in JSON Lines format.
 
     Args:
