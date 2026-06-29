@@ -220,7 +220,6 @@ def upsert_template(
 
 def add_correction(
     db_path: str | Path,
-    correction_id: str,
     receipt_id: str,
     field_name: str,
     old_value: str | None,
@@ -231,13 +230,15 @@ def add_correction(
 
     Args:
         db_path: Path to the SQLite database.
-        correction_id: UUID string.
         receipt_id: ID of the receipt to correct.
         field_name: The field name being corrected (e.g. 'amount', 'date').
         old_value: Old value before correction.
         new_value: New corrected value.
         user_id: Optional ID of the user who made the correction.
     """
+    import uuid
+
+    correction_id = str(uuid.uuid4())
     conn = get_db_connection(db_path)
     try:
         with conn:
@@ -310,13 +311,17 @@ def get_receipt_by_source_path(db_path: str | Path, source_path: str) -> Optiona
     """
     conn = get_db_connection(db_path)
     try:
+        """
+        拡張子が異なる場合でも、ファイル名（stem）が一致すればマッチするように、LIKE 検索を用いたフォールバック処理を追加する。\n
+        """
+        stem = Path(source_path).stem
         cursor = conn.execute(
             """
             SELECT id, source_path, ocr_json, normalized_json, clinic_id, created_at
             FROM receipts
-            WHERE source_path = ?
+            WHERE source_path = ? OR source_path LIKE ?
             """,
-            (source_path,),
+            (source_path, f"%/{stem}.%"),
         )
         row = cursor.fetchone()
         if row is None:

@@ -87,7 +87,6 @@ class ReceiptService:
                     old_value = old_data.get(field_name)
                     add_correction(
                         self.db_path,
-                        f"{file_stem}-{field_name}",
                         receipt_id_for_feedback,
                         field_name,
                         old_value,
@@ -101,6 +100,11 @@ class ReceiptService:
                     if receipt_with_ocr is None:
                         receipt_with_ocr = get_receipt(self.db_path, receipt_id_for_feedback)
 
+                    # 再取得: 更新されたクリニック名があればそれを使用
+                    current_clinic = updated_data.get("clinic")
+                    if clinic_id_for_feedback is None and current_clinic:
+                        clinic_id_for_feedback = get_or_create_clinic(self.db_path, str(current_clinic))
+
                     ocr_entries = None
                     if receipt_with_ocr:
                         ocr_json = receipt_with_ocr.get("ocr_json")
@@ -113,17 +117,18 @@ class ReceiptService:
 
                     if ocr_entries and updates:
                         field_queries = {}
-                        for field_name in updates:
+                        for field_name, new_value in updates.items():
+                            """
+                            ユーザーが新規に入力した値（updates[field_name]）をクエリとして使用することで、欠落していたフィールドの座標も新しく学習できる。\n
+                            """
                             old_value = old_data.get(field_name)
-                            if old_value is not None:
-                                field_queries[field_name] = str(old_value)
+                            query_val = old_value if old_value is not None else new_value
+                            if query_val is not None:
+                                field_queries[field_name] = str(query_val)
 
                         coord_results = {}
                         for field_name, query in field_queries.items():
                             coord_results[field_name] = search_coordinates(ocr_entries, query)
-
-                        if clinic_id_for_feedback is None and old_data.get("clinic"):
-                            clinic_id_for_feedback = get_or_create_clinic(self.db_path, str(old_data["clinic"]))
 
                         if clinic_id_for_feedback:
                             feedback_result = process_correction_feedback(

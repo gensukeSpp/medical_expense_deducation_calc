@@ -5,6 +5,21 @@ import re
 from typing import Optional
 
 
+def normalize_text(text: str) -> str:
+    """Normalize text for comparison: fullwidth to halfwidth, lowercase, strip whitespace."""
+    if not text:
+        return ""
+    
+    # Fullwidth to halfwidth
+    text = "".join(chr(ord(c) - 0xFEE0) if 0xFF10 <= ord(c) <= 0xFF19 else c for c in text)
+    text = "".join(chr(ord(c) - 0xFEE0) if 0xFF21 <= ord(c) <= 0xFF3A else c for c in text)
+    text = "".join(chr(ord(c) - 0xFEE0) if 0xFF41 <= ord(c) <= 0xFF5A else c for c in text)
+    
+    # Strip non-alphanumeric and lowercase
+    text = re.sub(r"[^\w]", "", text).lower()
+    return text
+
+
 def parse_amount(text: str) -> Optional[int]:
     """Parse a Japanese-style amount string into integer JPY.
     Returns None if parsing fails.

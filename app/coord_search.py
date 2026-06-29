@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import difflib
 from typing import Any, List, Optional
+from app.normalization import normalize_text
 
 
 def search_coordinates(
@@ -27,6 +28,10 @@ def search_coordinates(
     if not query or not ocr_entries:
         return None
 
+    normalized_query = normalize_text(query)
+    if not normalized_query:
+        return None
+
     best_ratio: float = 0.0
     best_box: Optional[List[List[int]]] = None
 
@@ -35,7 +40,16 @@ def search_coordinates(
         if not text:
             continue
 
-        ratio = difflib.SequenceMatcher(None, query, text).ratio()
+        # ratio = difflib.SequenceMatcher(None, query, text).ratio()
+        # if ratio > best_ratio:
+        #     best_ratio = ratio
+        #     best_box = entry.get("box")
+
+        normalized_text = normalize_text(text)
+        if not normalized_text:
+            continue
+
+        ratio = difflib.SequenceMatcher(None, normalized_query, normalized_text).ratio()
         if ratio > best_ratio:
             best_ratio = ratio
             best_box = entry.get("box")
