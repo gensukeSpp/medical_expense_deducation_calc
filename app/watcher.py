@@ -27,6 +27,9 @@ IMAGE_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
 
 
 def is_image_file(p: Path) -> bool:
+    #  _resized や temp などの文字列を含むファイル名を明示的に無視する
+    if "_resized" in p.name or "temp" in p.name:
+        return False
     return p.is_file() and p.suffix.lower() in IMAGE_EXT
 
 
@@ -80,20 +83,10 @@ def process_one(
     out_fname = f"{image_path.stem}_{mtime}-raw_data.json"
     output_json_path = output_dir / out_fname
 
-    # if output already exists, treat as already processed and move original to processed_dir
+    # if output already exists, treat as already processed
     if output_json_path.exists():
-        LOG.info("Output already exists for %s -> %s, moving to processed", image_path, output_json_path)
-        try:
-            dest = processed_dir / image_path.name
-            # avoid overwriting existing file in processed_dir
-            if dest.exists():
-                dest = processed_dir / f"{int(time.time())}_{image_path.name}"
-            shutil.move(str(image_path), str(dest))
-            LOG.info("Moved %s -> %s", image_path, dest)
-            return True
-        except Exception:
-            LOG.exception("Failed moving already-processed file %s", image_path)
-            return False
+        LOG.info("Output already exists for %s -> %s, skipping", image_path, output_json_path)
+        return True
 
     # skip files that are still being written
     if not is_file_stable(image_path):
@@ -101,10 +94,14 @@ def process_one(
         return False
 
     attempt = 0
+    resized_path = None
     while attempt <= retries:
         try:
             LOG.info("Processing %s (attempt %d)", image_path, attempt + 1)
-            structured = process_image(image_path, output_json_path=output_json_path, ocr=ocr)
+            structured = process_image(image_path, output_dir=output_dir, output_json_path=output_json_path, ocr=ocr)
+            
+            resized_path = output_dir / f"resized_gray_{image_path.name}"
+            
             LOG.info("Processed %s -> %s (%d items)", image_path, output_json_path, len(structured))
 
             # Generate structured data from OCR raw data
@@ -119,28 +116,31 @@ def process_one(
             except Exception:
                 LOG.exception("Failed to generate structured data for %s", output_json_path)
 
-            # Move original file to processed_dir
-            dest = processed_dir / image_path.name
-            # avoid overwriting existing file in processed_dir
-            if dest.exists():
-                dest = processed_dir / f"{int(time.time())}_{image_path.name}"
-            shutil.move(str(image_path), str(dest))
-            LOG.info("Moved %s -> %s", image_path, dest)
+            # Cleanup resized image
+            if resized_path and resized_path.exists():
+                resized_path.unlink()
+                LOG.info("Cleaned up resized image: %s", resized_path)
+
             return True
         except Exception as e:
             LOG.exception("Failed processing %s: %s", image_path, e)
             attempt += 1
             time.sleep(1)
 
-    # All attempts failed; move to failed_dir
+    # Cleanup resized image on failure
+    if resized_path and resized_path.exists():
+        resized_path.unlink()
+        LOG.info("Cleaned up resized image (on failure): %s", resized_path)
+
+    # All attempts failed; copy to failed_dir
     try:
         dest = failed_dir / image_path.name
         if dest.exists():
             dest = failed_dir / f"{int(time.time())}_{image_path.name}"
-        shutil.move(str(image_path), str(dest))
-        LOG.info("Moved failed %s -> %s", image_path, dest)
+        shutil.copy2(str(image_path), str(dest))
+        LOG.info("Copied failed %s -> %s", image_path, dest)
     except Exception:
-        LOG.exception("Failed to move failed file %s", image_path)
+        LOG.exception("Failed to copy failed file %s", image_path)
     return False
 
 
@@ -165,8 +165,14 @@ def scan_and_process(
             break
         try:
             success = process_one(
-                p, ocr, output_dir, processed_dir, failed_dir,
-                retries=retries, model=model, db_path=db_path,
+                p,
+                ocr,
+                output_dir,
+                processed_dir,
+                failed_dir,
+                retries=retries,
+                model=model,
+                db_path=db_path,
             )
             if success:
                 processed += 1
@@ -193,8 +199,14 @@ def run_loop(
     while True:
         try:
             n = scan_and_process(
-                input_dir, ocr, output_dir, processed_dir, failed_dir,
-                retries=retries, model=model, db_path=db_path,
+                input_dir,
+                ocr,
+                output_dir,
+                processed_dir,
+                failed_dir,
+                retries=retries,
+                model=model,
+                db_path=db_path,
             )
             if n > 0:
                 LOG.info("Processed %d files this cycle", n)
@@ -256,8 +268,14 @@ def run_watchdog(
                                 LOG.info("New file not stable after wait, skipping for now: %s", p)
                                 return
                             process_one(
-                                p, ocr, output_dir, processed_dir, failed_dir,
-                                retries=retries, model=model, db_path=db_path,
+                                p,
+                                ocr,
+                                output_dir,
+                                processed_dir,
+                                failed_dir,
+                                retries=retries,
+                                model=model,
+                                db_path=db_path,
                             )
 
                         t = threading.Thread(target=_delayed, daemon=True)

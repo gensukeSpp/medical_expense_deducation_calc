@@ -30,6 +30,7 @@ def setup_args():
     parser.add_argument("--processed-dir", default="processed", help="Directory to move processed images to")
     parser.add_argument("--failed-dir", default="failed", help="Directory to move failed images to")
     parser.add_argument("--poll-interval", type=int, default=10, help="Polling interval for watcher (seconds)")
+    parser.add_argument("--run-once", action="store_true", help="Scan once and exit")
     parser.add_argument("--retries", type=int, default=1, help="Retry attempts per file on failure")
     parser.add_argument(
         "--db-path",

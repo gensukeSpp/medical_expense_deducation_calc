@@ -13,4 +13,5 @@ wheels/
 output_json/
 failed/
 processed/
+data/
 uv.lock

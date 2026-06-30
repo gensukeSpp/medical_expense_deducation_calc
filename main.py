@@ -5,6 +5,14 @@ def main():
     args = setup_args()
     input_dir, output_dir, processed_dir, failed_dir = setup_directories(args)
 
+    # データベースのテーブルを初期化するためのマイグレーション処理
+    if args.db_path:
+        from app.db_migrations import run_migrations
+        from pathlib import Path
+
+        schema_path = Path("docs/schema.sql")
+        run_migrations(args.db_path, schema_path)
+
     # OCRエンジン初期化
     from paddleocr import PaddleOCR
 
@@ -35,7 +43,7 @@ def main():
                 processed_dir,
                 failed_dir,
                 poll_interval=args.poll_interval,
-                run_once=False,
+                run_once=args.run_once,
                 retries=args.retries,
                 model=args.model,
                 db_path=args.db_path,

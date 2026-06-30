@@ -40,7 +40,7 @@ class ExtractionService:
         extracted = client.extract_fields(ocr_json)
 
         # Template-based proximity extraction (MockLLMClient only)
-        if self.model == "mock" and self.db_path and extracted.get("clinic"):
+        if self.model == "mock" and self.db_path and extracted and extracted.get("clinic"):
             extracted = self._apply_template_corrections(ocr_json, extracted)
 
         return extracted
@@ -50,7 +50,7 @@ class ExtractionService:
             return extracted
 
         try:
-            clinic_name = str(extracted["clinic"]).strip()
+            clinic_name = str(extracted.get("clinic", "")).strip()
             if clinic_name:
                 clinic_id = get_or_create_clinic(self.db_path, clinic_name)
                 template = get_latest_template_by_clinic(self.db_path, clinic_id)
@@ -117,9 +117,26 @@ class OutputWriter:
     """Responsible for writing structured data to files."""
 
     def write(self, output_dir: Path, input_path: Path, structured: Dict[str, Any]) -> None:
-        out_name = f"{input_path.stem}-structured_data.json"
+        # Before: f"{input_path.stem}-structured_data.json"
+        # Since input_path here is likely the path to the raw_data.json file,
+        # its stem is already `{original_name}_{mtime}-raw_data`.
+        # The user wants `*-structured_data.json`.
+        # Let's extract the original base name.
+
+        # Example input_path: .../IMG_..._12345-raw_data.json
+        # Desired output: IMG_..._12345-structured_data.json
+
+        raw_stem = input_path.stem
+        # Remove '-raw_data' if present
+        if raw_stem.endswith("-raw_data"):
+            base_name = raw_stem[:-len("-raw_data")]
+        else:
+            base_name = raw_stem
+
+        out_name = f"{base_name}-structured_data.json"
         out_path = output_dir / out_name
         write_json_atomic(out_path, structured)
+
 
 
 class ReceiptProcessingService:

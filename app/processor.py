@@ -42,7 +42,7 @@ def process_single_image(args: argparse.Namespace, input_dir: Path, output_dir: 
         try:
             from app.ocr_pipeline import process_image
 
-            structured = process_image(image_path, output_json_path=output_json_path, ocr=ocr)
+            structured = process_image(image_path, output_dir=output_dir, output_json_path=output_json_path, ocr=ocr)
             if structured is None:
                 logging.warning("process_image returned None for %s", image_path)
             elif isinstance(structured, dict):
@@ -66,6 +66,7 @@ def process_single_image(args: argparse.Namespace, input_dir: Path, output_dir: 
         except Exception:
             logging.exception("Processing failed for %s", image_path)
             sys.exit(1)
+
     else:
         print(
             "No --image-name provided. Pass an image name to process a single file, or use "
