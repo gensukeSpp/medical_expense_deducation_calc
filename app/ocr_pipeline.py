@@ -55,28 +55,30 @@ def _normalize_results(results) -> List[dict]:
 
 def process_image(
     image_path: Path | str,
+    output_dir: Path | str,
     output_json_path: Optional[Path | str] = None,
     ocr=None,
-    resized_prefix: str = "resized_gray_",
 ) -> List[dict]:
     """Process a single image: resize, OCR, normalize, and optionally write JSON.
 
     Args:
         image_path: input image path
+        output_dir: directory to store resized image
         output_json_path: if provided, write structured JSON to this path
         ocr: optional PaddleOCR instance. If None, caller should supply one.
-        resized_prefix: prefix for resized image file created alongside input
 
     Returns:
         List of dicts with keys: text, confidence, box
     """
     image_path = Path(image_path)
+    output_dir = Path(output_dir)
     if not image_path.exists():
         raise FileNotFoundError(f"Image not found: {image_path}")
 
-    # produce resized image next to source
-    resized_path = image_path.parent / f"{resized_prefix}{image_path.name}"
-    resize_image_for_ocr(image_path, resized_path)
+    # produce resized image in output_dir
+    resized_path = resize_image_for_ocr(image_path, output_dir)
+    if resized_path is None:
+        return []
 
     img = cv2.imread(str(resized_path))
 

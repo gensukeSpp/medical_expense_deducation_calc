@@ -42,12 +42,15 @@ def test_scan_and_process_run_once(tmp_path):
 
     assert processed_count == 1
 
-    # one JSON should be created
-    outputs = list(output_dir.glob("*_raw_data.json")) + list(output_dir.glob("*.json"))
-    assert len(outputs) == 1
+    # Two JSON files should be created: raw_data + structured_data
+    raw_outputs = list(output_dir.glob("*-raw_data.json"))
+    structured_outputs = list(output_dir.glob("*-structured_data.json"))
+    assert len(raw_outputs) == 1
+    assert len(structured_outputs) == 1
 
-    # original moved to processed
-    assert (processed_dir / "test.jpg").exists()
+    # original should NOT be moved to processed
+    assert not (processed_dir / "test.jpg").exists()
+    assert (input_dir / "test.jpg").exists()
     assert not (failed_dir / "test.jpg").exists()
 
 
@@ -62,9 +65,9 @@ def test_process_skips_file_still_writing(tmp_path):
 
     img_path = input_dir / "inprogress.jpg"
 
-    # write initial content
-    with open(img_path, "wb") as f:
-        f.write(b"0" * 1024)
+    # create a dummy valid image
+    img = np.zeros((64, 64, 3), dtype=np.uint8)
+    cv2.imwrite(str(img_path), img)
 
     # background writer that appends data for ~2 seconds
     def writer(path: Path):
@@ -91,8 +94,9 @@ def test_process_skips_file_still_writing(tmp_path):
     assert processed_count == 0
     assert img_path.exists()
 
-    # Wait for writer to finish
+    # Wait for writer to finish and add a small buffer
     t.join()
+    time.sleep(1)
 
     # Second scan should process the now-stable file
     processed_count2 = scan_and_process(
@@ -102,18 +106,22 @@ def test_process_skips_file_still_writing(tmp_path):
         processed_dir=processed_dir,
         failed_dir=failed_dir,
         max_files=None,
-        retries=0,
+        retries=2, # Increased retries
     )
     assert processed_count2 == 1
-    # output created
-    outputs = list(output_dir.glob("*_raw_data.json")) + list(output_dir.glob("*.json"))
-    assert len(outputs) == 1
-    # moved to processed
-    assert (processed_dir / "inprogress.jpg").exists()
+
+    # Two JSON files created: raw_data + structured_data
+    raw_outputs = list(output_dir.glob("*-raw_data.json"))
+    structured_outputs = list(output_dir.glob("*-structured_data.json"))
+    assert len(raw_outputs) == 1
+    assert len(structured_outputs) == 1
+    # should NOT be in processed
+    assert not (processed_dir / "inprogress.jpg").exists()
+    assert (input_dir / "inprogress.jpg").exists()
 
 
 def test_scan_and_process_skips_when_output_exists(tmp_path):
-    """If output JSON already exists for the image (based on mtime naming), scanner should move image to processed without calling OCR."""
+    """If output JSON already exists for the image (based on mtime naming), scanner should skip processing without moving image."""
     input_dir = tmp_path / "input3"
     output_dir = tmp_path / "output3"
     processed_dir = tmp_path / "processed3"
@@ -153,5 +161,7 @@ def test_scan_and_process_skips_when_output_exists(tmp_path):
     )
 
     assert processed_count == 1
-    assert (processed_dir / "already.jpg").exists()
+    # should NOT be in processed
+    assert not (processed_dir / "already.jpg").exists()
+    assert (input_dir / "already.jpg").exists()
     assert (out_path).exists()

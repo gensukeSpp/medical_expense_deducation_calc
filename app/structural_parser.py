@@ -1,95 +1,205 @@
-"""Structural parser: converts OCR JSON -> structured data using LLM extractor and normalization."""
-
 from __future__ import annotations
+
 import uuid
+import logging
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 
 from app.input import read_json
 from app.llm_extractor import get_llm_client
 from app.normalization import normalize_extracted
 from app.output import write_json_atomic
 from app.error_logging import append_error
-from app.db import insert_receipt, get_or_create_clinic
+from app.db import insert_receipt, get_or_create_clinic, get_latest_template_by_clinic
+from app.coord_search import search_by_proximity_multi
+
+logger = logging.getLogger(__name__)
+
+# Default pixel proximity threshold for coordinate-based template matching.
+DEFAULT_PROXIMITY_THRESHOLD: float = 20.0
 
 
-def process_input_json(
-    input_path: Path | str,
-    model: str = "mock",
-    output_dir: Path | str = "output_json",
-    db_path: Optional[Path | str] = None,
-) -> Optional[Dict[str, Any]]:
-    """Process an OCR JSON file to extract and normalize structured fields.
+class OCRResultLoader:
+    """Responsible for loading OCR JSON files."""
 
-    Args:
-        input_path: Path to the input OCR JSON file.
-        model: The LLM model name or 'mock' for local heuristics.
-        output_dir: The directory where the structured JSON output will be saved.
-        db_path: Optional path to SQLite database for persistence.
+    @staticmethod
+    def load(input_path: Path | str) -> Dict[str, Any]:
+        path = Path(input_path)
+        return read_json(path)
 
-    Returns:
-        The normalized structured data dictionary, or None if processing failed.
-    """
-    input_path = Path(input_path)
-    output_dir = Path(output_dir)
-    try:
-        ocr_json = read_json(input_path)
-    except Exception as e:
-        append_error(output_dir, str(input_path), str(e), "read_input", {})
-        return None
 
-    try:
-        client = get_llm_client(model)
+class ExtractionService:
+    """Responsible for extracting data using LLM and template-based proximity matching."""
+
+    def __init__(self, model: str, db_path: Optional[Path | str] = None):
+        self.model = model
+        self.db_path = db_path if isinstance(db_path, Path) else Path(db_path) if db_path else None
+
+    def extract(self, ocr_json: Dict[str, Any]) -> Dict[str, Any]:
+        client = get_llm_client(self.model)
         extracted = client.extract_fields(ocr_json)
-    except Exception as e:
-        append_error(output_dir, str(input_path), str(e), "llm_extract", {})
-        extracted = {"name": None, "clinic": None, "amount": None, "date": None}
 
-    # normalization
-    try:
-        structured = normalize_extracted(extracted, ocr_json)
-    except Exception as e:
-        append_error(output_dir, str(input_path), str(e), "normalization", {"extracted": extracted})
-        # keep extracted as-is
-        structured = extracted
+        # Template-based proximity extraction (MockLLMClient only)
+        if self.model == "mock" and self.db_path and extracted and extracted.get("clinic"):
+            extracted = self._apply_template_corrections(ocr_json, extracted)
 
-    # output to JSON file
-    try:
-        out_name = f"{input_path.stem}-structured_data.json"
+        return extracted
+
+    def _apply_template_corrections(self, ocr_json: Dict[str, Any], extracted: Dict[str, Any]) -> Dict[str, Any]:
+        if self.db_path is None:
+            return extracted
+
+        try:
+            clinic_name = str(extracted.get("clinic", "")).strip()
+            if clinic_name:
+                clinic_id = get_or_create_clinic(self.db_path, clinic_name)
+                template = get_latest_template_by_clinic(self.db_path, clinic_id)
+                coords = template.get("coords_corrections") if template else None
+                if coords:
+                    ocr_entries: List[Dict[str, Any]] = []
+                    if isinstance(ocr_json, list):
+                        ocr_entries = ocr_json
+                    elif isinstance(ocr_json, dict):
+                        words = ocr_json.get("words", [])
+                        if words:
+                            ocr_entries = words
+                        # text_lines は box なし → 近接検索不可、スキップ
+
+                    if ocr_entries:
+                        proximity_results = search_by_proximity_multi(
+                            ocr_entries,
+                            coords,
+                            threshold=DEFAULT_PROXIMITY_THRESHOLD,
+                        )
+                        for field_name, match in proximity_results.items():
+                            if match and match.get("text") and field_name in extracted:
+                                extracted[field_name] = match["text"]
+        except Exception as e:
+            logger.error(f"Template proximity correction failed: {e}")
+        return extracted
+
+
+class DataNormalizationService:
+    """Responsible for normalizing extracted data."""
+
+    def normalize(self, extracted: Dict[str, Any], ocr_json: Dict[str, Any]) -> Dict[str, Any]:
+        return normalize_extracted(extracted, ocr_json)
+
+
+class ReceiptRepository:
+    """Responsible for persisting receipt data to the database."""
+
+    def __init__(self, db_path: Optional[Path | str] = None):
+        self.db_path = db_path if isinstance(db_path, Path) else Path(db_path) if db_path else None
+
+    def save(
+        self,
+        receipt_id: str,
+        source_path: Path,
+        ocr_json: Dict[str, Any],
+        structured: Dict[str, Any],
+        clinic_id: Optional[str],
+    ) -> None:
+        if not self.db_path:
+            return
+
+        insert_receipt(
+            db_path=self.db_path,
+            receipt_id=receipt_id,
+            source_path=str(source_path),
+            ocr_json=ocr_json,
+            normalized_json=structured,
+            clinic_id=clinic_id,
+        )
+
+
+class OutputWriter:
+    """Responsible for writing structured data to files."""
+
+    def write(self, output_dir: Path, input_path: Path, structured: Dict[str, Any]) -> None:
+        # Before: f"{input_path.stem}-structured_data.json"
+        # Since input_path here is likely the path to the raw_data.json file,
+        # its stem is already `{original_name}_{mtime}-raw_data`.
+        # The user wants `*-structured_data.json`.
+        # Let's extract the original base name.
+
+        # Example input_path: .../IMG_..._12345-raw_data.json
+        # Desired output: IMG_..._12345-structured_data.json
+
+        raw_stem = input_path.stem
+        # Remove '-raw_data' if present
+        if raw_stem.endswith("-raw_data"):
+            base_name = raw_stem[:-len("-raw_data")]
+        else:
+            base_name = raw_stem
+
+        out_name = f"{base_name}-structured_data.json"
         out_path = output_dir / out_name
         write_json_atomic(out_path, structured)
-    except Exception as e:
-        append_error(output_dir, str(input_path), str(e), "write_output", {"structured": structured})
-        return None
 
-    # DB persistence
-    if db_path:
+
+
+class ReceiptProcessingService:
+    """Orchestrator for the receipt processing workflow."""
+
+    def __init__(
+        self,
+        extractor: ExtractionService,
+        normalizer: DataNormalizationService,
+        repository: ReceiptRepository,
+        writer: OutputWriter,
+        loader: OCRResultLoader,
+    ):
+        self.extractor = extractor
+        self.normalizer = normalizer
+        self.repository = repository
+        self.writer = writer
+        self.loader = loader
+
+    def process(self, input_path: Path | str, output_dir: Path | str) -> Optional[Dict[str, Any]]:
+        input_path = Path(input_path)
+        output_dir = Path(output_dir)
+
+        # 1. Load
         try:
-            """
-            競合状態（レースコンディション）と外部キー制約違反のリスクがあります。\n\n
-            現在の実装では、get_clinic_by_name でクリニックの存在を確認した後に upsert_clinic を呼び出す「Check-then-Act」パターンを採用しています。\n
-            マルチプロセスや並列実行環境において、同じクリニック名のデータがほぼ同時に処理された場合、既存のクリニックIDが新しいUUIDに更新されてしまい、既にそのクリニックIDを参照している receipts レコードが存在すると、外部キー制約違反（IntegrityError）が発生して処理がクラッシュします。\n\n
-            新しく追加した get_or_create_clinic を使用して、アトミックにクリニックIDを取得・作成するように修正してください。
-            """
+            ocr_json = self.loader.load(input_path)
+        except Exception as e:
+            append_error(output_dir, str(input_path), str(e), "read_input", {})
+            return None
+
+        # 2. Extract
+        try:
+            extracted = self.extractor.extract(ocr_json)
+        except Exception as e:
+            append_error(output_dir, str(input_path), str(e), "llm_extract", {})
+            extracted = {"name": None, "clinic": None, "amount": None, "date": None}
+
+        # 3. Normalize
+        try:
+            structured = self.normalizer.normalize(extracted, ocr_json)
+        except Exception as e:
+            append_error(output_dir, str(input_path), str(e), "normalization", {"extracted": extracted})
+            structured = extracted
+
+        # 4. Write Output
+        try:
+            self.writer.write(output_dir, input_path, structured)
+        except Exception as e:
+            append_error(output_dir, str(input_path), str(e), "write_output", {"structured": structured})
+            return None
+
+        # 5. Persist
+        try:
             clinic_name = structured.get("clinic")
             clinic_id = None
             if clinic_name:
                 clinic_name = str(clinic_name).strip()
-                if clinic_name:
-                    # check if clinic exists, otherwise create it safely
-                    clinic_id = get_or_create_clinic(db_path, clinic_name)
+                if clinic_name and self.repository.db_path:
+                    clinic_id = get_or_create_clinic(self.repository.db_path, clinic_name)
 
             receipt_id = str(uuid.uuid4())
-            insert_receipt(
-                db_path=db_path,
-                receipt_id=receipt_id,
-                source_path=str(input_path),
-                ocr_json=ocr_json,
-                normalized_json=structured,
-                clinic_id=clinic_id,
-            )
+            self.repository.save(receipt_id, input_path, ocr_json, structured, clinic_id)
         except Exception as e:
-            # If DB insert fails, log error but continue processing to maintain robustness
             append_error(
                 output_dir,
                 str(input_path),
@@ -98,4 +208,23 @@ def process_input_json(
                 {"structured": structured},
             )
 
-    return structured
+        return structured
+
+
+def process_input_json(
+    input_path: Path | str,
+    model: str = "mock",
+    output_dir: Path | str = "output_json",
+    db_path: Optional[Path | str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Legacy entry point for backward compatibility."""
+    extractor = ExtractionService(model, db_path)
+    normalizer = DataNormalizationService()
+    repository = ReceiptRepository(db_path)
+    writer = OutputWriter()
+    loader = OCRResultLoader()
+
+    service = ReceiptProcessingService(
+        extractor=extractor, normalizer=normalizer, repository=repository, writer=writer, loader=loader
+    )
+    return service.process(input_path, output_dir)
