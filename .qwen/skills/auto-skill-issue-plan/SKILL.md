@@ -1,5 +1,5 @@
 ---
-name: issue-plan
+name: auto-skill-issue-plan
 description: アーキテクチャスナップショットと既存タスクテンプレートからIssue実装計画を立案する手順
 source: auto-skill
 extracted_at: '2026-06-29T05:16:12.154Z'
@@ -183,3 +183,62 @@ Issue 内に「もし〜なら見送って構いません」などの条件付�
 
 ### テストデータでの glob パターン注意
 - watcher が出力するファイル名は `{stem}_{mtime}-raw_data.json`（ハイフン + `raw_data`）。テストの glob パターンで `*_raw_data.json`（アンダースコア）と書くとマッチしない。`*-raw_data.json` が正しい。
+
+### JSON-DB 不整合のデバッグ（Web UI 修正後）
+- Web UI で修正した値が DB では正しいが JSON ファイルでは null になる場合、原因は多くの場合 `normalize_extracted()` 内での値の再フォーマットにある。
+- **典型パターン**: `normalization.py::parse_amount()` は `"3,800円"` 形式を期待するため、ユーザーが `"3800"`（プレーン数字）を送信すると `None` を返す。
+- **対策**: `parse_amount()` にプレーン数字文字列のパース処理（カンマ除去 + `int()`）を **既存の正規表現マッチの後** に追加する。これにより既存の日本語形式（"3,800円"）の動作を保ちつつ、プレーン数字も対応できる。
+- **診断手順**:
+  1. Web UI で修正 → レスポンス確認
+  2. DB の `normalized_json` と JSON ファイルの内容を比較
+  3. DB が正しく JSON が null → `normalize_extracted` が犯人
+  4. `parse_amount` に修正値「3800」を渡して `None` が返ることを確認
+
+### 外部キー（FK）が NULL のまま更新されないパターン
+- コード内で `get_or_create_clinic()` などを使って参照先レコードを作成しても、**元のテーブルの FK カラムを UPDATE する処理が抜けている** ことがある。
+- **対策**: 参照先を作成/取得した直後に、`UPDATE receipts SET clinic_id = ? WHERE id = ?` を同一トランザクション内で実行する。
+- **診断手順**:
+  1. DB の `receipts` テーブルで `clinic_id` が NULL のレコードを確認
+  2. `clinics` テーブルに対応する名前のレコードが存在するか確認
+  3. 存在する → `update_receipt()` 内で `UPDATE` 文が欠落している
+  4. 存在しない → `get_or_create_clinic` が呼ばれていないか、clinic 名が抽出されていない
+
+### ファイルパス不一致によるデータ欠落デバッグ
+- コードが `{file_stem}.json` のような仮定でファイルパスを構築しているが、実際のファイル名が異なる形式（例: `{file_stem}_{mtime}-raw_data.json`）の場合、ファイル検索が暗黙裡に失敗し、後続処理がスキップされる。
+- **対策**: ファイル名に動的要素（mtime, UUID 等）が含まれる場合、**完全一致ではなく `glob` でのパターンマッチ** を使用する。複数マッチした場合は `sorted()` で最新を選択する。
+  ```python
+  raw_data_matches = sorted(glob.glob(str(output_dir / f"{file_stem}*-raw_data.json")))
+  raw_data_path = Path(raw_data_matches[-1]) if raw_data_matches else None
+  ```
+- **診断手順**:
+  1. 修正後のテンプレートデータが空 → 座標フィードバックが動作していない
+  2. `raw_data_json_path` の値をログ出力して確認
+  3. 実際のファイル名と比較 → 不一致を特定
+  4. `glob` で正しいパスを解決するように修正
+
+### OCR データ取得の二段階フォールバックパターン
+- 修正時に OCR エントリ（座標検索に必要）が DB から取得できない場合、raw_data JSON ファイルから直接読み込むフォールバックが必要。
+- **理由**: `update_receipt()` では新規レシートが `ocr_json=None` で INSERT されるため、DB からの OCR データ取得が常に失敗する可能性がある。
+- **実装パターン**:
+  ```python
+  # 方法1: DB から OCR データ取得
+  receipt = get_receipt(db_path, receipt_id)
+  ocr_entries = extract_ocr_entries(receipt["ocr_json"]) if receipt else None
+
+  # 方法2: raw_data JSON ファイルから直接読み込み（フォールバック）
+  if ocr_entries is None and raw_data_path and raw_data_path.exists():
+      raw_data = read_json(raw_data_path)
+      ocr_entries = extract_ocr_entries(raw_data)
+  ```
+- `extract_ocr_entries()` ヘルパーは OCR JSON の形式（list / dict with "words" / dict with "text_lines"）を自動判別する。
+
+### 検索方式の状況依存切り替えパターン
+- 座標検索には「文字列類似度（difflib）」と「座標近接（Euclidean distance）」の2種類があり、状況によって使い分ける。
+- **選択ロジック**:
+  ```
+  テンプレート座標（coords_corrections）が存在する
+    → search_by_proximity_multi() を使用（座標近接、しきい値20px）
+  テンプレート座標が存在しない
+    → search_coordinates() を使用（文字列類似度、しきい値0.7）
+  ```
+- **注意**: `search_by_proximity_multi` の戻り値は OCR entry dict 全体（`{text, confidence, box}`）であり、`search_coordinates` の戻り値は box 座標のみ（`[[x1,y1],...]`）という違いがある。`process_correction_feedback()` に渡す `field_coords_map` は box 座標形式に統一する必要がある。

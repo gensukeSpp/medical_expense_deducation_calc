@@ -2,9 +2,10 @@ import argparse
 import logging
 import os
 from pathlib import Path
+from typing import Iterable
 
 
-def setup_args():
+def setup_args(argv: Iterable[str] | None = None):
     """引数を解析し、初期化処理を行う。
     Returns:
         argparse.Namespace: 解析されたコマンドライン引数。

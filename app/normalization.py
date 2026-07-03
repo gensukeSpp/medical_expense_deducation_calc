@@ -92,6 +92,15 @@ def parse_amount(text: str) -> Optional[int]:
         val += temp
         return val
 
+    # プレーン数字文字列のパース（既存の日本語形式にマッチしなかった場合の最終手段）
+    # 例: "3800" -> 3800, "3,800" -> 3800
+    s_clean = t.replace(",", "").strip()
+    if s_clean.isdigit():
+        try:
+            return int(s_clean)
+        except Exception:
+            return None
+
     return None
 
 
