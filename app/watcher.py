@@ -298,30 +298,19 @@ def run_watchdog(
 
 
 def parse_args(argv: Iterable[str] | None = None):
-    p = argparse.ArgumentParser(description="OCR folder watcher / batch processor")
-    p.add_argument("--input-dir", default=str(Path.home() / "Downloads" / "receipts"))
-    p.add_argument("--output-dir", default="output_json")
-    p.add_argument("--processed-dir", default="processed")
-    p.add_argument("--failed-dir", default="failed")
-    p.add_argument("--poll-interval", type=int, default=10, help="Seconds between scans when in watch mode")
-    p.add_argument("--run-once", action="store_true", help="Scan once and exit")
-    p.add_argument("--retries", type=int, default=1, help="Number of retry attempts per file on failure")
-    p.add_argument(
-        "--use-watchdog",
-        action="store_true",
-        help="Use watchdog observer instead of polling (requires watchdog package)",
-    )
-    return p.parse_args(list(argv) if argv is not None else None)
+    """Parse command-line arguments. For compatibility with tests."""
+    from app.args import setup_args
+    
+    # 使用 main.py で定義された引数体系
+    args = setup_args()
+    return args
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    args = parse_args()
-
-    input_dir = Path(args.input_dir)
-    output_dir = Path(args.output_dir)
-    processed_dir = Path(args.processed_dir)
-    failed_dir = Path(args.failed_dir)
+    from app.args import setup_args, setup_directories
+    args = setup_args()
+    input_dir, output_dir, processed_dir, failed_dir = setup_directories(args)
 
     if args.use_watchdog:
         try:
@@ -332,6 +321,8 @@ if __name__ == "__main__":
                 failed_dir,
                 poll_interval=args.poll_interval,
                 retries=args.retries,
+                model=args.model,
+                db_path=args.db_path,
             )
         except Exception:
             LOG.exception("Watchdog failed, falling back to polling loop")
@@ -343,6 +334,8 @@ if __name__ == "__main__":
                 poll_interval=args.poll_interval,
                 run_once=args.run_once,
                 retries=args.retries,
+                model=args.model,
+                db_path=args.db_path,
             )
     else:
         run_loop(
@@ -353,4 +346,6 @@ if __name__ == "__main__":
             poll_interval=args.poll_interval,
             run_once=args.run_once,
             retries=args.retries,
+            model=args.model,
+            db_path=args.db_path,
         )
