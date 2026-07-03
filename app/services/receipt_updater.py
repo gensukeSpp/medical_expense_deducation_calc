@@ -109,7 +109,9 @@ class ReceiptUpdater:
 
                 # Update clinic ID if needed
                 current_clinic = updated_data.get("clinic")
-                if clinic_id_for_feedback is None and current_clinic:
+                # クリニック名を別のクリニックに変更した場合に、新しいクリニックのIDが取得・更新されず、古いクリニックIDのままになってしまうのを防ぐため
+                old_clinic = old_data.get("clinic")
+                if current_clinic and (clinic_id_for_feedback is None or current_clinic != old_clinic):
                     try:
                         clinic_id_for_feedback = self.db_repo.get_or_create_clinic(str(current_clinic))
                     except RuntimeError:
@@ -185,16 +187,32 @@ class ReceiptUpdater:
             # Build field queries from updates
             field_queries = {}
             for field_name, new_value in updates.items():
+                # Skip empty values
+                if new_value is None or str(new_value).strip() == "":
+                    continue
                 old_value = old_data.get(field_name)
                 query_val = old_value if old_value is not None else new_value
                 if query_val is not None:
                     field_queries[field_name] = str(query_val)
 
             # Get raw data path (for potential future use)
-            _ = sorted(self.file_repo.find_all_receipt_files())
+            # _ = sorted(self.file_repo.find_all_receipt_files())
+            # Removed unused file listing to improve performance
 
             # Get OCR entries
-            ocr_entries = self.file_repo.get_ocr_entries(file_stem)
+            ocr_entries = None
+            receipt = self.db_repo.get_receipt_by_id(file_stem)
+            if receipt and receipt.get("ocr_json"):
+                ocr_json = receipt["ocr_json"]
+                if isinstance(ocr_json, list):
+                    ocr_entries = ocr_json
+                elif isinstance(ocr_json, dict):
+                    if "words" in ocr_json:
+                        ocr_entries = ocr_json.get("words", [])
+                    elif "text_lines" in ocr_json:
+                        ocr_entries = [{"text": t} for t in ocr_json["text_lines"]]
+            if ocr_entries is None:
+                ocr_entries = self.file_repo.get_ocr_entries(file_stem)
 
             if ocr_entries and field_queries:
                 coord_results = {}

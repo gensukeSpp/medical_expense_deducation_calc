@@ -99,9 +99,9 @@ def process_one(
         try:
             LOG.info("Processing %s (attempt %d)", image_path, attempt + 1)
             structured = process_image(image_path, output_dir=output_dir, output_json_path=output_json_path, ocr=ocr)
-            
+
             resized_path = output_dir / f"resized_gray_{image_path.name}"
-            
+
             LOG.info("Processed %s -> %s (%d items)", image_path, output_json_path, len(structured))
 
             # Generate structured data from OCR raw data
@@ -300,15 +300,16 @@ def run_watchdog(
 def parse_args(argv: Iterable[str] | None = None):
     """Parse command-line arguments. For compatibility with tests."""
     from app.args import setup_args
-    
+
     # 使用 main.py で定義された引数体系
-    args = setup_args()
+    args = setup_args(list(argv) if argv is not None else None)
     return args
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     from app.args import setup_args, setup_directories
+
     args = setup_args()
     input_dir, output_dir, processed_dir, failed_dir = setup_directories(args)
 

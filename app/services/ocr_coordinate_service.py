@@ -23,81 +23,83 @@ class OCRCoordinateService:
         self.db_path = db_path
         self.output_dir = output_dir
 
-    def update_coordinates(
-        self,
-        receipt_id: str,
-        updated_data: Dict[str, Any],
-        file_stem: str,
-        raw_data_json_path: Optional[Path] = None,
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Update coordinates based on user corrections.
+    # def update_coordinates(
+    #     self,
+    #     receipt_id: str,
+    #     updated_data: Dict[str, Any],
+    #     file_stem: str,
+    #     raw_data_json_path: Optional[Path] = None,
+    # ) -> Optional[Dict[str, Any]]:
+    #     """
+    #     Update coordinates based on user corrections.
 
-        Args:
-            receipt_id: The receipt ID.
-            updated_data: The updated receipt data.
-            file_stem: The file stem for the receipt.
-            raw_data_json_path: Optional path to raw data file.
+    #     Args:
+    #         receipt_id: The receipt ID.
+    #         updated_data: The updated receipt data.
+    #         file_stem: The file stem for the receipt.
+    #         raw_data_json_path: Optional path to raw data file.
 
-        Returns:
-            Feedback result dictionary, or None if no feedback was processed.
-        """
-        if not self.db_path:
-            return None
+    #     Returns:
+    #         Feedback result dictionary, or None if no feedback was processed.
+    #     """
+    #     if not self.db_path:
+    #         return None
 
-        try:
-            # Get OCR entries
-            ocr_entries = self._get_ocr_entries(receipt_id, file_stem, raw_data_json_path)
+    #     try:
+    #         # Get OCR entries
+    #         ocr_entries = self._get_ocr_entries(receipt_id, file_stem, raw_data_json_path)
 
-            if not ocr_entries or not updated_data:
-                return None
+    #         if not ocr_entries or not updated_data:
+    #             return None
 
-            # Build field queries from updates
-            field_queries = {}
-            for field_name, new_value in updated_data.items():
-                if new_value is not None:
-                    field_queries[field_name] = str(new_value)
+    #         # Build field queries from updates
+    #         field_queries = {}
+    #         for field_name, new_value in updated_data.items():
+    #             if new_value is not None:
+    #                 field_queries[field_name] = str(new_value)
 
-            coord_results: Dict[str, Optional[List[List[int]]]] = {}
-            template_coords = None
+    #         coord_results: Dict[str, Optional[List[List[int]]]] = {}
+    #         template_coords = None
 
-            # Get clinic ID from receipt
-            receipt = get_receipt(self.db_path, receipt_id)
-            clinic_id = receipt.get("clinic_id") if receipt else None
+    #         # Get clinic ID from receipt
+    #         receipt = get_receipt(self.db_path, receipt_id)
+    #         clinic_id = receipt.get("clinic_id") if receipt else None
 
-            if clinic_id:
-                template = get_latest_template_by_clinic(self.db_path, clinic_id)
-                if template:
-                    template_coords = template.get("coords_corrections")
+    #         if clinic_id:
+    #             template = get_latest_template_by_clinic(self.db_path, clinic_id)
+    #             if template:
+    #                 template_coords = template.get("coords_corrections")
 
-            # Search coordinates
-            if template_coords and ocr_entries:
-                proximity_results = search_by_proximity_multi(ocr_entries, template_coords)
-                for field_name, match in proximity_results.items():
-                    if match and match.get("box"):
-                        coord_results[field_name] = match["box"]
-                    else:
-                        coord_results[field_name] = None
-            else:
-                for field_name, query in field_queries.items():
-                    coord_results[field_name] = search_coordinates(ocr_entries, query) if ocr_entries else None
+    #         # Search coordinates
+    #         if template_coords and ocr_entries:
+    #             proximity_results = search_by_proximity_multi(ocr_entries, template_coords)
+    #             for field_name, match in proximity_results.items():
+    #                 if match and match.get("box"):
+    #                     coord_results[field_name] = match["box"]
+    #                 else:
+    #                     coord_results[field_name] = None
+    #         else:
+    #             for field_name, query in field_queries.items():
+    #                 coord_results[field_name] = search_coordinates(ocr_entries, query) if ocr_entries else None
 
-            # Process feedback if clinic_id is available
-            if clinic_id:
-                return process_correction_feedback(
-                    db_path=self.db_path,
-                    clinic_id=clinic_id,
-                    field_coords_map=coord_results,
-                    receipt_id=receipt_id,
-                )
+    #         # Process feedback if clinic_id is available
+    #         if clinic_id:
+    #             return process_correction_feedback(
+    #                 db_path=self.db_path,
+    #                 clinic_id=clinic_id,
+    #                 field_coords_map=coord_results,
+    #                 receipt_id=receipt_id,
+    #             )
 
-        except Exception as e:
-            file_path = str(self.output_dir / f"{file_stem}-structured_data.json") if self.output_dir else file_stem
-            append_error(
-                self.output_dir or Path("."), file_path, str(e), "coordinate_update", {"receipt_id": receipt_id}
-            )
+    #     except Exception as e:
+    #         file_path = str(self.output_dir / f"{file_stem}-structured_data.json") if self.output_dir else file_stem
+    #         append_error(
+    #             self.output_dir or Path("."), file_path, str(e), "coordinate_update", {"receipt_id": receipt_id}
+    #         )
 
-        return None
+    #     return None
+    # Deprecated: This method is unused in the new architecture.
+    # Coordinate feedback is now handled by ReceiptUpdater._process_coordinate_feedback.
 
     def _get_ocr_entries(
         self,
