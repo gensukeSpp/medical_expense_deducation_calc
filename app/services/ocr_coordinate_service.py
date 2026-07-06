@@ -138,7 +138,7 @@ class OCRCoordinateService:
                 if new_value is None or str(new_value).strip() == "":
                     continue
                 old_value = old_data.get(field_name)
-                query_val = old_value or new_value  # Bug A: treat "" like None
+                query_val = old_value if old_value not in (None, "") else new_value  # Bug A: treat "" like None
                 if query_val is not None:
                     field_queries[field_name] = str(query_val)
 
@@ -169,6 +169,12 @@ class OCRCoordinateService:
 
                     proximity_results = search_by_proximity_multi(ocr_entries, template["coords_corrections"])
                     for field_name, match in proximity_results.items():
+                        """
+                        レイアウト変更などで座標が移動した場合に、テキスト検索で得られた新しい正確な座標が古い座標（またはその近傍の誤ったテキストの座標）で上書きされてしまい、テンプレートが正しく更新されなくなります。\n
+                        修正対象のフィールドについては近接検索による上書きをスキップするように修正すべきです。
+                        """
+                        if field_name in field_queries:
+                            continue
                         if match and match.get("box"):
                             coord_results[field_name] = match["box"]
                         elif field_name not in coord_results:

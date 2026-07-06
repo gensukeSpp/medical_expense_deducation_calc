@@ -215,15 +215,17 @@ class ReceiptDatabaseRepository:
                 )
 
             # Update clinic ID if needed
+            # クリニック名が変更された場合は、clinic_id が None であってもデータベースを更新するように修正すべきです。
             current_clinic = updated_data.get("clinic")
             old_clinic = old_data.get("clinic")
-            if current_clinic and (clinic_id is None or current_clinic != old_clinic):
-                try:
-                    clinic_id = self.get_or_create_clinic(str(current_clinic))
-                except RuntimeError:
+            if current_clinic != old_clinic:
+                if current_clinic:
+                    try:
+                        clinic_id = self.get_or_create_clinic(str(current_clinic))
+                    except RuntimeError:
+                        clinic_id = None
+                else:
                     clinic_id = None
-
-            if clinic_id:
                 self.update_receipt_clinic_id(receipt_id, clinic_id)
 
         except Exception as e:

@@ -159,15 +159,6 @@ def parse_date(text: str) -> Optional[str]:
             return f"{yr:04d}-{int(m_reiwa.group(2)):02d}-{int(m_reiwa.group(3)):02d}"
         except Exception:
             return None
-    # 令和 era short forms: R{N}.M.D / R{N}/M/D / 令{N}.M.D / 令{N}/M/D
-    m_reiwa_short = re.search(r"(?:R|令)(\d{1,2})[/.](\d{1,2})[/.](\d{1,2})", t)
-    if m_reiwa_short:
-        try:
-            era_year = int(m_reiwa_short.group(1))
-            yr = 2018 + era_year
-            return f"{yr:04d}-{int(m_reiwa_short.group(2)):02d}-{int(m_reiwa_short.group(3)):02d}"
-        except Exception:
-            return None
     return None
 
 
