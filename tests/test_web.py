@@ -160,47 +160,54 @@ def test_correction_sets_clinic_id(tmp_path):
     # 出力ディレクトリを一時作成
     out_dir = tmp_path / "output_json"
     out_dir.mkdir()
-    
+
     # 修正対象の structured_data ファイルを作成（ clinic が指定されている）
     from app.output import write_json_atomic
+
     data = {"name": "山田 太郎", "clinic": "あおばクリニック", "amount": 3800, "date": "2026-01-15"}
     write_json_atomic(out_dir / "receipt-001-structured_data.json", data)
 
-    # データベース準備  
+    # データベース準備
     db_file = tmp_path / "test_db.sqlite3"
     from app.db_migrations import run_migrations
+
     SCHEMA_PATH = Path("docs/schema.sql")
     run_migrations(db_file, SCHEMA_PATH)
-    
+
     # web server を起動（DB 接続あり）
     from app.web.server import create_app
+
     app = create_app(output_dir=str(out_dir), db_path=str(db_file))
     from fastapi.testclient import TestClient
+
     with TestClient(app) as client:
         # 修正実行前: clinic_id は NULL であるか確認
         import sqlite3
+
         conn = sqlite3.connect(str(db_file))
         cursor = conn.execute("SELECT id FROM receipts WHERE id = 'receipt-001'")
         receipt_exists = cursor.fetchone()
         conn.close()
-        
+
         # レコードが存在しない場合は作成
         if not receipt_exists:
             from app.db import insert_receipt
+
             insert_receipt(db_file, "receipt-001", "dummy_path", None, data)
-        
+
         # 修正実行前: clinic_id は NULL であるか確認（DBにレコードがある前提）
         import sqlite3
+
         conn = sqlite3.connect(str(db_file))
         cursor = conn.execute("SELECT clinic_id FROM receipts WHERE id = 'receipt-001'")
         prior_clinic_id = cursor.fetchone()[0]  # fetchone()[0] としてアクセス
         conn.close()
         assert prior_clinic_id is None, "最初は clinic_id は NULL であるべき"
-        
+
         # 修正実行
         response = client.put("/receipt-001", json={"name": "田中 花子"})
         assert response.status_code == 200
-        
+
         # 修正後: clinic_id が NULL でなくなったか確認
         conn = sqlite3.connect(str(db_file))
         cursor = conn.execute("SELECT clinic_id FROM receipts WHERE id = 'receipt-001'")
@@ -214,20 +221,23 @@ def test_correction_creates_template(tmp_path):
     # 出力ディレクトリを一時作成
     out_dir = tmp_path / "output_json"
     out_dir.mkdir()
-    
+
     # 修正対象の structured_data ファイルを作成
     from app.output import write_json_atomic
+
     data = {"name": "山田 太郎", "clinic": "あおばクリニック", "amount": 3800, "date": "2026-01-15"}
     write_json_atomic(out_dir / "receipt-001-structured_data.json", data)
-    
-    # データベース準備  
+
+    # データベース準備
     db_file = tmp_path / "test_db.sqlite3"
     from app.db_migrations import run_migrations
-    SCHEMA_PATH = Path("docs/schema.sql")  
+
+    SCHEMA_PATH = Path("docs/schema.sql")
     run_migrations(db_file, SCHEMA_PATH)
-    
+
     # raw_data ファイルも用意
     import json
+
     raw_data = [
         {"text": "山田 太郎", "confidence": 0.95, "box": [[50, 100], [200, 100], [200, 140], [50, 140]]},
         {"text": "あおばクリニック", "confidence": 0.92, "box": [[50, 160], [300, 160], [300, 200], [50, 200]]},
@@ -235,18 +245,21 @@ def test_correction_creates_template(tmp_path):
         {"text": "2026/01/15", "confidence": 0.90, "box": [[50, 50], [200, 50], [200, 80], [50, 80]]},
     ]
     write_json_atomic(out_dir / "receipt-001-1234567890-raw_data.json", raw_data)
-    
+
     # web server を起動（DB 接続あり）
     from app.web.server import create_app
+
     app = create_app(output_dir=str(out_dir), db_path=str(db_file))
     from fastapi.testclient import TestClient
+
     with TestClient(app) as client:
         # 修正実行
         response = client.put("/receipt-001", json={"amount": 5000})
         assert response.status_code == 200
-        
+
         # 修正后: templates テーブルに新規にレコードがあることを確認
         import sqlite3
+
         conn = sqlite3.connect(str(db_file))
         cursor = conn.execute("SELECT COUNT(*) FROM templates")
         template_count = cursor.fetchone()[0]

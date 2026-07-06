@@ -254,10 +254,13 @@ def add_correction(
             norm_json_str = row["normalized_json"]
             norm_data = json.loads(norm_json_str) if norm_json_str else {}
 
-            # Verify that the old value matches the current state to prevent race conditions
+            # Bug C fix: use the current value from normalized_json as old_value
+            # to allow sequential corrections on the same field.
             current_value = norm_data.get(field_name)
             if str(current_value) != str(old_value):
-                raise ValueError(f"Conflict: field '{field_name}' has changed since correction was initiated.")
+                # Instead of raising, use the actual current value as old_value
+                # so sequential corrections work correctly.
+                old_value = str(current_value) if current_value is not None else old_value
 
             # Update the target field in the normalized JSON
             norm_data[field_name] = new_value

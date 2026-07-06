@@ -1,69 +1,198 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
-    <title>詳細</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>詳細 — {{ file_stem }}</title>
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --bg: #f1f5f9;
+            --card-bg: #ffffff;
+            --text: #1e293b;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+            --radius: 12px;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
         }
-        form {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-            width: 65%;
+        .container {
+            max-width: 640px;
+            margin: 0 auto;
+            padding: 24px 16px 48px;
         }
-        div {
+        /* Header */
+        .header {
             display: flex;
             align-items: center;
-            gap: 20px;
-            height: 15vh;
-            font-size: larger;
+            gap: 12px;
+            margin-bottom: 24px;
         }
-        label {
-            flex: 1;
-            text-align: center;
-            height: 100%;
-            position: relative;
-            top: 25%;
-            /* transform: translateY(25%); */
+        .header h1 {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text);
         }
-        input {
-            flex: 2;
-            height: 100%;
-            font-size: large;
-        }
-        button {
-            border: none;
-            border-radius: 4px;
-            padding: 8px 16px;
-            background-color: #f0f0f0;
-            cursor: pointer;
-            font-size: large;
-            width: 50%;
-            height: 15vh;
-        }
-        button:hover {
-            background-color: #e0e0e0;
-        }
-        a {
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
             text-decoration: none;
-            color: #007bff;
+            color: var(--text-muted);
+            font-size: 14px;
+            padding: 6px 12px;
+            border-radius: 8px;
+            transition: background 0.15s;
+        }
+        .back-link:hover {
+            background: var(--border);
+            color: var(--text);
+        }
+        /* Card */
+        .card {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            overflow: hidden;
+        }
+        /* Field rows */
+        .field-group {
+            display: flex;
+            align-items: stretch;
+            border-bottom: 1px solid var(--border);
+        }
+        .field-group:last-of-type { border-bottom: none; }
+        .field-label {
+            flex: 0 0 140px;
+            display: flex;
+            align-items: center;
+            padding: 16px 16px 16px 20px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-muted);
+            background: #f8fafc;
+            border-right: 1px solid var(--border);
+        }
+        .field-input {
+            flex: 1;
+            min-width: 0;
+        }
+        .field-input input {
+            width: 100%;
+            height: 100%;
+            padding: 14px 16px;
+            border: none;
+            font-size: 15px;
+            color: var(--text);
+            background: transparent;
+            outline: none;
+            transition: background 0.15s;
+        }
+        .field-input input:focus {
+            background: #f0f7ff;
+        }
+        /* Action buttons */
+        .actions {
+            padding: 20px;
+            display: flex;
+            gap: 12px;
+            background: #fafbfc;
+            border-top: 1px solid var(--border);
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 10px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s;
+            text-decoration: none;
+        }
+        .btn-primary {
+            background: var(--primary);
+            color: #fff;
+            flex: 1;
+        }
+        .btn-primary:hover { background: var(--primary-hover); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-secondary {
+            background: transparent;
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+        }
+        .btn-secondary:hover {
+            background: var(--border);
+            color: var(--text);
+        }
+        /* htmx loading indicator */
+        .htmx-request .btn-primary { pointer-events: none; opacity: 0.7; }
+        .loader {
+            display: none;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        .htmx-request .loader { display: inline-block; }
+        .htmx-request .btn-text { display: none; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        /* Responsive */
+        @media (max-width: 480px) {
+            .container { padding: 16px 12px 32px; }
+            .field-group { flex-direction: column; }
+            .field-label {
+                flex: none;
+                padding: 10px 16px 4px;
+                background: transparent;
+                border-right: none;
+                font-size: 12px;
+            }
+            .field-input input { padding: 8px 16px 12px; }
+            .actions { flex-direction: column; }
         }
     </style>
 </head>
 <body>
-    <h1>詳細</h1>
-    <form hx-put="{{ file_stem }}" hx-target="this" hx-swap="outerHTML">
-        {% for field_name, field_info in fields %}
-        <div>
-            <label>{{ field_info.label }}:</label>
-            <input type="text" name="{{ field_name }}" value="{{ field_info.value }}">
+    <div class="container">
+        <div class="header">
+            <a href="/" class="back-link">&larr; 一覧に戻る</a>
+            <h1>領収書詳細</h1>
         </div>
-        {% endfor %}
-        <button type="submit">修正</button>
-        <a href="/">戻る</a>
-    </form>
+
+        <div class="card">
+            <form hx-put="{{ file_stem }}" hx-target="this" hx-swap="outerHTML">
+                {% for field_name, field_info in fields %}
+                <div class="field-group">
+                    <div class="field-label">{{ field_info.label }}</div>
+                    <div class="field-input">
+                        <input type="text" name="{{ field_name }}" value="{{ field_info.value }}">
+                    </div>
+                </div>
+                {% endfor %}
+                <div class="actions">
+                    <button type="submit" class="btn btn-primary">
+                        <span class="loader"></span>
+                        <span class="btn-text">修正する</span>
+                    </button>
+                    <a href="/" class="btn btn-secondary">キャンセル</a>
+                </div>
+            </form>
+        </div>
+    </div>
 </body>
 </html>

@@ -33,7 +33,7 @@ def resize_image_for_ocr(input_path: Path, output_dir: Path, target_short_side=9
 
     # 保存先パスの生成
     output_path = output_dir / f"resized_gray_{input_path.name}"
-    
+
     # 保存
     cv2.imwrite(str(output_path), resized_img)
     print(f"リサイズ完了: {output_path.name} ({w}x{h} -> {new_w}x{new_h})")

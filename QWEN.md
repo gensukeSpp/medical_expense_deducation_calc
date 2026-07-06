@@ -142,6 +142,10 @@ Convention: run Black before committing. Config in `pyproject.toml` (line-length
 - E2E testing framework
 - **Pipeline integration**: watcher / single-image auto-generates structured data from OCR raw data
 - **Coordinate proximity threshold** (20px): template-based extraction for MockLLMClient
+- **Coordinate feedback dual-search**: proximity + text search merged for template learning (Bug B fix)
+- **Empty old_value fallback**: coordinate search uses new_value when old_value is empty (Bug A fix)
+- **Sequential correction support**: `add_correction` auto-resolves old_value conflicts (Bug C fix)
+- **元号 (Reiwa) date parsing**: `令和N年M月D日`, `R{N}.M.D`, `令{N}/M/D` → ISO date
 
 ### In Progress / Upcoming
 - Template correction value learning (real-world data)

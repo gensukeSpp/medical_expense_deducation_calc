@@ -152,3 +152,83 @@ class ReceiptDatabaseRepository:
                 )
         finally:
             conn.close()
+
+    def apply_receipt_updates(
+        self,
+        file_stem: str,
+        file_path: Path,
+        old_data: Dict[str, Any],
+        updated_data: Dict[str, Any],
+        updates: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Apply all database updates for a receipt correction in a single call.
+
+        Handles receipt record creation/retrieval, correction insertion,
+        and clinic ID resolution. Returns feedback metadata for downstream
+        coordinate processing.
+
+        Args:
+            file_stem: The stem of the file being updated.
+            file_path: Full path to the structured data file.
+            old_data: Previous data before updates.
+            updated_data: Data after normalization.
+            updates: The raw updates applied.
+
+        Returns:
+            Dict with keys:
+                - receipt_id: str or None
+                - clinic_id: str or None
+                - error: str or None
+        """
+        receipt_id: Optional[str] = None
+        clinic_id: Optional[str] = None
+
+        if not self.is_available():
+            return {"receipt_id": None, "clinic_id": None, "error": "Database not available"}
+
+        try:
+            # Get or create receipt record
+            receipt = self.get_receipt_by_id(file_stem)
+            if receipt:
+                receipt_id = receipt["id"]
+                clinic_id = receipt.get("clinic_id")
+            else:
+                receipt_id = file_stem
+                source_path = str(file_path)
+                self.insert_receipt(
+                    receipt_id=receipt_id,
+                    source_path=source_path,
+                    ocr_json=None,
+                    normalized_json=old_data,
+                    clinic_id=None,
+                )
+
+            # Add corrections for each updated field
+            for field_name, new_value in updates.items():
+                old_value = old_data.get(field_name)
+                self.add_correction(
+                    receipt_id=receipt_id,
+                    field_name=field_name,
+                    old_value=str(old_value) if old_value is not None else None,
+                    new_value=str(new_value) if new_value is not None else None,
+                )
+
+            # Update clinic ID if needed
+            # クリニック名が変更された場合は、clinic_id が None であってもデータベースを更新するように修正すべきです。
+            current_clinic = updated_data.get("clinic")
+            old_clinic = old_data.get("clinic")
+            if current_clinic != old_clinic:
+                if current_clinic:
+                    try:
+                        clinic_id = self.get_or_create_clinic(str(current_clinic))
+                    except RuntimeError:
+                        clinic_id = None
+                else:
+                    clinic_id = None
+                self.update_receipt_clinic_id(receipt_id, clinic_id)
+
+        except Exception as e:
+            return {"receipt_id": receipt_id, "clinic_id": clinic_id, "error": str(e)}
+
+        return {"receipt_id": receipt_id, "clinic_id": clinic_id, "error": None}
