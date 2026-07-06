@@ -106,7 +106,7 @@ def test_process_skips_file_still_writing(tmp_path):
         processed_dir=processed_dir,
         failed_dir=failed_dir,
         max_files=None,
-        retries=2, # Increased retries
+        retries=2,  # Increased retries
     )
     assert processed_count2 == 1
 

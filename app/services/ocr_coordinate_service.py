@@ -98,8 +98,97 @@ class OCRCoordinateService:
     #         )
 
     #     return None
-    # Deprecated: This method is unused in the new architecture.
-    # Coordinate feedback is now handled by ReceiptUpdater._process_coordinate_feedback.
+    # Deprecated: Coordinate feedback is now handled by process_feedback().
+    # This method is kept for reference only and will be removed in a future cleanup.
+
+    def process_feedback(
+        self,
+        file_stem: str,
+        file_path: Path,
+        old_data: Dict[str, Any],
+        updates: Dict[str, Any],
+        receipt_id: Optional[str],
+        clinic_id: Optional[str],
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Process coordinate feedback for a receipt update.
+
+        Handles OCR entry retrieval, coordinate search (text + proximity),
+        and template feedback in one call. This is the SRP-compliant
+        replacement for the old ReceiptUpdater._process_coordinate_feedback.
+
+        Args:
+            file_stem: The file stem.
+            file_path: Path to the structured data file.
+            old_data: Previous data before updates.
+            updates: The applied updates.
+            receipt_id: The receipt ID.
+            clinic_id: The clinic ID.
+
+        Returns:
+            Feedback result dictionary, or None if no feedback was processed.
+        """
+        if not clinic_id:
+            return None
+
+        try:
+            # Build field queries from updates (with empty string fallback)
+            field_queries: Dict[str, str] = {}
+            for field_name, new_value in updates.items():
+                if new_value is None or str(new_value).strip() == "":
+                    continue
+                old_value = old_data.get(field_name)
+                query_val = old_value or new_value  # Bug A: treat "" like None
+                if query_val is not None:
+                    field_queries[field_name] = str(query_val)
+
+            if not field_queries:
+                return None
+
+            # Get OCR entries (DB first, then fallback to file)
+            raw_data_json_path: Optional[Path] = None
+            if self.output_dir:
+                raw_data_json_path = self.output_dir / f"{file_stem}-raw_data.json"
+            ocr_entries = self._get_ocr_entries(receipt_id or file_stem, file_stem, raw_data_json_path)
+
+            if not ocr_entries:
+                return None
+
+            # Text search for corrected fields
+            from app.coord_search import search_coordinates
+
+            coord_results: Dict[str, Any] = {}
+            for field_name, query in field_queries.items():
+                coord_results[field_name] = search_coordinates(ocr_entries, query)
+
+            # Proximity search for template fields (Bug B: both searches run)
+            if clinic_id:
+                template = get_latest_template_by_clinic(self.db_path, clinic_id)
+                if template and template.get("coords_corrections"):
+                    from app.coord_search import search_by_proximity_multi
+
+                    proximity_results = search_by_proximity_multi(ocr_entries, template["coords_corrections"])
+                    for field_name, match in proximity_results.items():
+                        if match and match.get("box"):
+                            coord_results[field_name] = match["box"]
+                        elif field_name not in coord_results:
+                            coord_results[field_name] = None
+
+            return self._process_correction_feedback(
+                clinic_id=clinic_id,
+                field_coords_map=coord_results,
+                receipt_id=receipt_id,
+            )
+
+        except Exception as e:
+            append_error(
+                self.output_dir or Path("."),
+                str(file_path),
+                str(e),
+                "coordinate_feedback",
+                {"updates": updates},
+            )
+            return None
 
     def _get_ocr_entries(
         self,
@@ -131,24 +220,44 @@ class OCRCoordinateService:
             elif isinstance(ocr_json, dict) and "text_lines" in ocr_json:
                 ocr_entries = [{"text": t} for t in ocr_json["text_lines"]]
 
-        # Fallback to raw data file
-        if ocr_entries is None and raw_data_json_path and raw_data_json_path.exists():
-            try:
-                from app.input import read_json
+        # Fallback to raw data file by trying multiple patterns
+        if ocr_entries is None and self.output_dir:
+            # Try the exact path first
+            if raw_data_json_path and raw_data_json_path.exists():
+                ocr_entries = self._load_raw_data(raw_data_json_path)
+            # Try file_stem-based patterns (same as ReceiptFileRepository.get_ocr_entries)
+            if ocr_entries is None:
+                import glob as glob_mod
 
-                raw_data = read_json(raw_data_json_path)
-                if isinstance(raw_data, list):
-                    ocr_entries = raw_data
-                elif isinstance(raw_data, dict):
-                    if "words" in raw_data:
-                        ocr_entries = raw_data["words"]
-                    elif "text_lines" in raw_data:
-                        ocr_entries = [{"text": t} for t in raw_data["text_lines"]]
-            except Exception as e:
-                file_path = str(raw_data_json_path)
-                append_error(self.output_dir or Path("."), file_path, str(e), "fallback_raw_data_read", {})
+                patterns = [
+                    str(self.output_dir / f"{file_stem}*-raw_data.json"),
+                    str(self.output_dir / f"{file_stem}.json"),
+                ]
+                for pattern in patterns:
+                    matches = sorted(glob_mod.glob(pattern))
+                    if matches:
+                        ocr_entries = self._load_raw_data(Path(matches[-1]))
+                        if ocr_entries:
+                            break
 
         return ocr_entries
+
+    def _load_raw_data(self, path: Path) -> Optional[List[Dict[str, Any]]]:
+        """Load OCR entries from a raw data file."""
+        try:
+            from app.input import read_json
+
+            raw_data = read_json(path)
+            if isinstance(raw_data, list):
+                return raw_data
+            if isinstance(raw_data, dict):
+                if "words" in raw_data:
+                    return raw_data["words"]
+                if "text_lines" in raw_data:
+                    return [{"text": t} for t in raw_data["text_lines"]]
+        except Exception as e:
+            append_error(self.output_dir or Path("."), str(path), str(e), "fallback_raw_data_read", {})
+        return None
 
     def _process_correction_feedback(
         self,

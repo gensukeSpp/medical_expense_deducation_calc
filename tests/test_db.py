@@ -165,3 +165,84 @@ def test_add_correction_nonexistent_receipt(temp_db: Path) -> None:
             old_value="1000",
             new_value="1200",
         )
+
+
+def test_add_correction_same_field_twice(temp_db: Path) -> None:
+    """Verify add_correction works correctly for sequential corrections on the same field."""
+    clinic_id = "clinic-twice"
+    upsert_clinic(temp_db, clinic_id, "Test Clinic Twice")
+
+    receipt_id = "receipt-twice"
+    normalized_json = {"amount": 1000, "date": "2026-06-18"}
+    insert_receipt(temp_db, receipt_id, "img.png", {}, normalized_json, clinic_id)
+
+    # First correction: amount 1000 -> 2000
+    add_correction(
+        db_path=temp_db,
+        receipt_id=receipt_id,
+        field_name="amount",
+        old_value="1000",
+        new_value="2000",
+    )
+
+    # Verify first correction
+    conn = get_db_connection(temp_db)
+    try:
+        row = conn.execute("SELECT * FROM corrections ORDER BY rowid DESC LIMIT 1").fetchone()
+        assert row["field_name"] == "amount"
+        assert row["old_value"] == "1000"
+        assert row["new_value"] == "2000"
+    finally:
+        conn.close()
+
+    receipt = get_receipt(temp_db, receipt_id)
+    assert receipt is not None
+    assert receipt["normalized_json"]["amount"] == "2000"
+
+    # Second correction: amount 2000 -> 3000 (same field, sequential)
+    add_correction(
+        db_path=temp_db,
+        receipt_id=receipt_id,
+        field_name="amount",
+        old_value="2000",
+        new_value="3000",
+    )
+
+    # Verify second correction
+    conn = get_db_connection(temp_db)
+    try:
+        rows = conn.execute(
+            "SELECT * FROM corrections WHERE receipt_id = ? ORDER BY rowid",
+            (receipt_id,),
+        ).fetchall()
+        assert len(rows) == 2
+        assert rows[1]["field_name"] == "amount"
+        assert rows[1]["old_value"] == "2000"
+        assert rows[1]["new_value"] == "3000"
+    finally:
+        conn.close()
+
+    receipt = get_receipt(temp_db, receipt_id)
+    assert receipt is not None
+    assert receipt["normalized_json"]["amount"] == "3000"
+
+
+def test_add_correction_conflict_resolved(temp_db: Path) -> None:
+    """Verify add_correction resolves old_value mismatch by using current value."""
+    clinic_id = "clinic-conflict"
+    upsert_clinic(temp_db, clinic_id, "Test Clinic Conflict")
+
+    receipt_id = "receipt-conflict"
+    normalized_json = {"amount": 1000}
+    insert_receipt(temp_db, receipt_id, "img.png", {}, normalized_json, clinic_id)
+
+    # Correct amount from 1000 -> 2000
+    add_correction(temp_db, receipt_id, "amount", "1000", "2000")
+
+    # Now normalized_json has amount="2000"
+    # Try correction with wrong old_value "1000" (should auto-resolve)
+    add_correction(temp_db, receipt_id, "amount", "1000", "3000")
+
+    receipt = get_receipt(temp_db, receipt_id)
+    assert receipt is not None
+    assert receipt["normalized_json"]["amount"] == "3000"

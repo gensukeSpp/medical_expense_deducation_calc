@@ -129,14 +129,13 @@ class OutputWriter:
         raw_stem = input_path.stem
         # Remove '-raw_data' if present
         if raw_stem.endswith("-raw_data"):
-            base_name = raw_stem[:-len("-raw_data")]
+            base_name = raw_stem[: -len("-raw_data")]
         else:
             base_name = raw_stem
 
         out_name = f"{base_name}-structured_data.json"
         out_path = output_dir / out_name
         write_json_atomic(out_path, structured)
-
 
 
 class ReceiptProcessingService:

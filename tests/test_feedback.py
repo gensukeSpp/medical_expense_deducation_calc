@@ -202,6 +202,61 @@ class TestCorrectionFeedbackEndToEnd:
         assert "amount" in template_after["coords_corrections"]
         assert template_after["coords_corrections"]["amount"] == [[400, 300], [480, 300], [480, 340], [400, 340]]
 
+    def test_feedback_new_field_added_to_existing_template(
+        self, temp_db, temp_output_dir, seed_clinic_and_receipt, client
+    ):
+        """テンプレートに既存フィールドがある状態で新規フィールドを修正すると両方がテンプレートに反映される (Bug B fix)"""
+        import uuid
+
+        clinic_id = seed_clinic_and_receipt["clinic_id"]
+
+        # Pre-seed template with amount coords only
+        template_id = str(uuid.uuid4())
+        amount_coords = [[400, 300], [480, 300], [480, 340], [400, 340]]
+        upsert_template(temp_db, template_id, clinic_id, version=2, coords_corrections={"amount": amount_coords})
+
+        # Verify template has amount coords
+        template = get_latest_template_by_clinic(temp_db, clinic_id)
+        assert template["coords_corrections"] == {"amount": amount_coords}
+
+        # Correct name (new field not in template)
+        response = client.put("/receipt-001", json={"name": "山田 次郎"})
+        assert response.status_code == 200
+
+        # Verify template has BOTH amount (from proximity) and name (from text search)
+        template = get_latest_template_by_clinic(temp_db, clinic_id)
+        assert template is not None
+        assert "amount" in template["coords_corrections"], "amount should persist from proximity search"
+        assert "name" in template["coords_corrections"], "name should be found via text search"
+        # name coords should match OCR entry for "山田 太郎"
+        assert template["coords_corrections"]["name"] == [[50, 100], [200, 100], [200, 140], [50, 140]]
+
+    def test_feedback_empty_old_value(self, tmp_path):
+        """old_value が空文字の場合でも座標検索が動作する (Bug A fix)"""
+        out_dir = tmp_path / "output_json"
+        out_dir.mkdir()
+        db_file = tmp_path / "test_db.sqlite3"
+        run_migrations(db_file, SCHEMA_PATH)
+
+        # structured_data with empty fields (no name/clinic detected)
+        data = {"name": "", "clinic": "", "amount": 3800, "date": "2026-01-15"}
+        write_json_atomic(out_dir / "receipt-001-structured_data.json", data)
+
+        # raw_data with OCR entries
+        raw_data = [
+            {"text": "山田 太郎", "confidence": 0.95, "box": [[50, 100], [200, 100], [200, 140], [50, 140]]},
+            {"text": "あおばクリニック", "confidence": 0.92, "box": [[50, 160], [300, 160], [300, 200], [50, 200]]},
+        ]
+        write_json_atomic(out_dir / "receipt-001-raw_data.json", raw_data)
+
+        app = create_app(output_dir=str(out_dir), db_path=str(db_file))
+        with TestClient(app) as client:
+            # Correct name (old_value is "", should use new_value as query)
+            response = client.put("/receipt-001", json={"name": "山田 太郎"})
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "updated"
+
     def test_feedback_error_page_on_no_match(self, temp_db, temp_output_dir, seed_clinic_and_receipt, client):
         """座標が見つからない場合、エラーページが返される"""
         clinic_id = seed_clinic_and_receipt["clinic_id"]

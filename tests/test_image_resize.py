@@ -4,6 +4,7 @@ import numpy as np
 from pathlib import Path
 from app.image_resize import resize_image_for_ocr
 
+
 def test_resize_nonexistent(monkeypatch, tmp_path):
     """
     Template test: ensure resize_image_for_ocr handles unreadable input images gracefully.
@@ -15,8 +16,8 @@ def test_resize_nonexistent(monkeypatch, tmp_path):
 
     # monkeypatch cv2.imread to simulate unreadable image
     import app.image_resize as image_resize
+
     monkeypatch.setattr(image_resize.cv2, "imread", lambda p: None)
 
     result = resize_image_for_ocr(input_path, output_dir)
     assert result is None
-

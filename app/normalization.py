@@ -9,12 +9,12 @@ def normalize_text(text: str) -> str:
     """Normalize text for comparison: fullwidth to halfwidth, lowercase, strip whitespace."""
     if not text:
         return ""
-    
+
     # Fullwidth to halfwidth
     text = "".join(chr(ord(c) - 0xFEE0) if 0xFF10 <= ord(c) <= 0xFF19 else c for c in text)
     text = "".join(chr(ord(c) - 0xFEE0) if 0xFF21 <= ord(c) <= 0xFF3A else c for c in text)
     text = "".join(chr(ord(c) - 0xFEE0) if 0xFF41 <= ord(c) <= 0xFF5A else c for c in text)
-    
+
     # Strip non-alphanumeric and lowercase
     text = re.sub(r"[^\w]", "", text).lower()
     return text
@@ -119,6 +119,16 @@ def parse_date(text: str) -> Optional[str]:
             return f"{int(y):04d}-{int(mm):02d}-{int(dd):02d}"
         except Exception:
             return None
+    # 令和 era short forms: R{N}.M.D / R{N}/M/D / 令{N}.M.D / 令{N}/M/D
+    # NOTE: must come before M/D/YY to avoid "R6/3/15" matching as "6/3/15"
+    m_reiwa_short = re.search(r"(?:R|令)(\d{1,2})[/.](\d{1,2})[/.](\d{1,2})", t)
+    if m_reiwa_short:
+        try:
+            era_year = int(m_reiwa_short.group(1))
+            yr = 2018 + era_year
+            return f"{yr:04d}-{int(m_reiwa_short.group(2)):02d}-{int(m_reiwa_short.group(3)):02d}"
+        except Exception:
+            return None
     # M/D/YY or M/D/YYYY
     m2 = re.search(r"(\d{1,2})/(\d{1,2})/(\d{2,4})", t)
     if m2:
@@ -138,6 +148,24 @@ def parse_date(text: str) -> Optional[str]:
         y, mm, dd = m3.groups()
         try:
             return f"{int(y):04d}-{int(mm):02d}-{int(dd):02d}"
+        except Exception:
+            return None
+    # 令和 era: 令和N年M月D日 or 令和元年M月D日
+    m_reiwa = re.search(r"令和(?:(\d+)年|元年)\s*(\d{1,2})月\s*(\d{1,2})日", t)
+    if m_reiwa:
+        try:
+            era_year = int(m_reiwa.group(1)) if m_reiwa.group(1) else 1
+            yr = 2018 + era_year  # 令和元年=2019
+            return f"{yr:04d}-{int(m_reiwa.group(2)):02d}-{int(m_reiwa.group(3)):02d}"
+        except Exception:
+            return None
+    # 令和 era short forms: R{N}.M.D / R{N}/M/D / 令{N}.M.D / 令{N}/M/D
+    m_reiwa_short = re.search(r"(?:R|令)(\d{1,2})[/.](\d{1,2})[/.](\d{1,2})", t)
+    if m_reiwa_short:
+        try:
+            era_year = int(m_reiwa_short.group(1))
+            yr = 2018 + era_year
+            return f"{yr:04d}-{int(m_reiwa_short.group(2)):02d}-{int(m_reiwa_short.group(3)):02d}"
         except Exception:
             return None
     return None

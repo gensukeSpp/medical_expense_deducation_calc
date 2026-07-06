@@ -37,3 +37,38 @@ def test_parse_amount_existing_formats_unchanged():
     assert parse_amount("3800円") == 3800
     assert parse_amount("2000") == 2000  # プレーン数字
     assert parse_amount("一万二千円") == 12000
+
+
+def test_parse_date_standard():
+    """テスト: 標準的な日付形式が正しくパースされる"""
+    assert parse_date("2026/01/15") == "2026-01-15"
+    assert parse_date("2026-01-15") == "2026-01-15"
+    assert parse_date("2026年1月15日") == "2026-01-15"
+    assert parse_date("1/15/2026") == "2026-01-15"
+
+
+def test_parse_date_reiwa_long():
+    """テスト: 令和N年M月D日 形式がパースされる"""
+    assert parse_date("令和6年3月15日") == "2024-03-15"
+    assert parse_date("令和元年3月15日") == "2019-03-15"
+    assert parse_date("令和7年1月1日") == "2025-01-01"
+
+
+def test_parse_date_reiwa_short():
+    """テスト: 令和短縮形 (R, 令) がパースされる"""
+    assert parse_date("R6.3.15") == "2024-03-15"
+    assert parse_date("R6/3/15") == "2024-03-15"
+    assert parse_date("令6.3.15") == "2024-03-15"
+    assert parse_date("令6/3/15") == "2024-03-15"
+
+
+def test_parse_date_reiwa_gannen():
+    """テスト: 令和元年のパース"""
+    assert parse_date("R1.5.1") == "2019-05-01"
+    assert parse_date("令和元年5月1日") == "2019-05-01"
+
+
+def test_parse_date_empty():
+    """テスト: 空文字列は None を返す"""
+    assert parse_date("") is None
+    assert parse_date(None) is None
