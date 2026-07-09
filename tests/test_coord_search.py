@@ -8,9 +8,21 @@ from app.coord_search import (
     search_coordinates_multi,
     search_by_proximity,
     search_by_proximity_multi,
+    search_fields_by_proximity,
+    _is_multi_box,
     _calculate_box_center,
     _euclidean_distance,
 )
+
+MULTI_BOX_NAME = [
+    [[67, 126], [205, 130], [203, 198], [65, 194]],
+    [[255, 126], [379, 135], [374, 209], [250, 200]],
+]
+
+OCR_ENTRIES_SPLIT_NAME = [
+    {"text": "山田", "confidence": 0.99, "box": [[67, 126], [205, 130], [203, 198], [65, 194]]},
+    {"text": "太郎様", "confidence": 0.91, "box": [[255, 126], [379, 135], [374, 209], [250, 200]]},
+]
 
 
 @pytest.fixture
@@ -295,3 +307,81 @@ class TestSearchByProximityMulti:
         results = search_by_proximity_multi(sample_entries, field_box_map, threshold=20.0)
         assert results["name"] is not None
         assert results["far_field"] is None
+
+
+class TestIsMultiBox:
+    """Tests for _is_multi_box helper."""
+
+    def test_is_multi_box_true(self):
+        """マルチbox形式 → True"""
+        assert _is_multi_box(MULTI_BOX_NAME) is True
+
+    def test_is_multi_box_false_single(self):
+        """単一box形式 → False"""
+        single_box = [[50, 100], [200, 100], [200, 140], [50, 140]]
+        assert _is_multi_box(single_box) is False
+
+    def test_is_multi_box_false_invalid(self):
+        """不正データ → False"""
+        assert _is_multi_box([]) is False
+        assert _is_multi_box(None) is False
+        assert _is_multi_box("not a list") is False
+        assert _is_multi_box([1, 2, 3]) is False
+
+
+class TestSearchFieldsByProximity:
+    """Tests for search_fields_by_proximity."""
+
+    @pytest.fixture
+    def sample_entries(self):
+        """OCR エントリのサンプル（近接検索テスト用）"""
+        return [
+            {
+                "text": "山田 太郎",
+                "confidence": 0.95,
+                "box": [[50, 100], [200, 100], [200, 140], [50, 140]],
+            },
+            {
+                "text": "あおばクリニック",
+                "confidence": 0.92,
+                "box": [[50, 160], [300, 160], [300, 200], [50, 200]],
+            },
+            {
+                "text": "3,800",
+                "confidence": 0.88,
+                "box": [[400, 300], [480, 300], [480, 340], [400, 340]],
+            },
+        ]
+
+    def test_search_fields_by_proximity_single(self, sample_entries):
+        """単一box → 単一テキスト返却"""
+        field_map = {
+            "name": [[50, 100], [200, 100], [200, 140], [50, 140]],
+        }
+        results = search_fields_by_proximity(sample_entries, field_map)
+        assert results["name"] == "山田 太郎"
+
+    def test_search_fields_by_proximity_multi(self):
+        """マルチbox → 連結テキスト返却"""
+        field_map = {"name": MULTI_BOX_NAME}
+        results = search_fields_by_proximity(OCR_ENTRIES_SPLIT_NAME, field_map)
+        assert results["name"] == "山田太郎"  # "様" 除去後
+
+    def test_search_fields_by_proximity_multi_with_sama(self):
+        """マルチboxで「様」サフィックス除去"""
+        entries = [
+            {"text": "佐藤", "confidence": 0.99, "box": [[50, 100], [150, 100], [150, 150], [50, 150]]},
+            {"text": "花子様", "confidence": 0.92, "box": [[200, 100], [320, 100], [320, 150], [200, 150]]},
+        ]
+        multi_box = [
+            [[50, 100], [150, 100], [150, 150], [50, 150]],
+            [[200, 100], [320, 100], [320, 150], [200, 150]],
+        ]
+        results = search_fields_by_proximity(entries, {"name": multi_box})
+        assert results["name"] == "佐藤花子"
+
+    def test_search_fields_by_proximity_threshold(self, sample_entries):
+        """閾値超過 → None"""
+        far_box = [[0, 500], [100, 500], [100, 550], [0, 550]]
+        results = search_fields_by_proximity(sample_entries, {"far": far_box}, threshold=20.0)
+        assert results["far"] is None

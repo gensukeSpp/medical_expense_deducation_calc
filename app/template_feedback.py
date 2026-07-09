@@ -18,7 +18,7 @@ from app.db import (
 def process_correction_feedback(
     db_path: str | Path,
     clinic_id: str,
-    field_coords_map: Dict[str, Optional[List[List[int]]]],
+    field_coords_map: Dict[str, Optional[List[List[int]] | List[List[List[int]]]]],
     receipt_id: str | None = None,
 ) -> Dict[str, Any]:
     """Update clinic template coordinates based on user correction feedback.
@@ -30,7 +30,10 @@ def process_correction_feedback(
     Args:
         db_path: Path to the SQLite database.
         clinic_id: The clinic ID whose template should be updated.
-        field_coords_map: Mapping of field names to box coordinates (or None if not found).
+        field_coords_map: Mapping of field names to box coordinates.
+            - None: coordinate not found for this field.
+            - List[List[int]]: single 4-point polygon (backward compatible).
+            - List[List[List[int]]]: multi-box for split fields (e.g., split name).
         receipt_id: Optional receipt ID associated with the correction.
 
     Returns:

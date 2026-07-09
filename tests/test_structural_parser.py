@@ -165,3 +165,81 @@ class TestProcessInputJson:
     def test_proximity_threshold_default(self):
         """DEFAULT_PROXIMITY_THRESHOLD が 20.0 であること"""
         assert DEFAULT_PROXIMITY_THRESHOLD == 20.0
+
+
+class TestApplyTemplateMultiBox:
+    """Tests for template-based multi-box proximity extraction (Reverse direction)."""
+
+    MULTI_BOX_COORDS = {
+        "name": [
+            [[67, 126], [205, 130], [203, 198], [65, 194]],
+            [[255, 126], [379, 135], [374, 209], [250, 200]],
+        ],
+    }
+
+    @pytest.fixture
+    def seed_multibox_template(self, temp_db: Path) -> str:
+        """Insert a clinic with a multi-box name template. Returns clinic_id."""
+        from app.db import get_or_create_clinic
+
+        clinic_id = get_or_create_clinic(temp_db, "あおばクリニック")
+        template_id = str(uuid.uuid4())
+        upsert_template(
+            temp_db,
+            template_id,
+            clinic_id,
+            version=1,
+            coords_corrections=self.MULTI_BOX_COORDS,
+        )
+        return clinic_id
+
+    def test_apply_template_multi_box(
+        self,
+        temp_output_dir: Path,
+        temp_db: Path,
+        seed_multibox_template: str,
+    ):
+        """マルチboxテンプレート → 連結テキストで上書きされる"""
+        raw_path = temp_output_dir / "receipt-001.json"
+
+        # Split-name OCR entries
+        split_ocr = [
+            {"text": "山田", "confidence": 0.99, "box": [[67, 126], [205, 130], [203, 198], [65, 194]]},
+            {"text": "太郎様", "confidence": 0.91, "box": [[255, 126], [379, 135], [374, 209], [250, 200]]},
+            {"text": "あおばクリニック", "confidence": 0.92, "box": [[50, 160], [300, 160], [300, 200], [50, 200]]},
+        ]
+        write_json_atomic(raw_path, split_ocr)
+
+        result = process_input_json(raw_path, model="mock", output_dir=temp_output_dir, db_path=temp_db)
+
+        assert result is not None
+        # MockLLMClient extracts name from full text: "山田 太郎"
+        # Template multi-box proximity should override with merged text "山田太郎"
+        assert result["name"] == "山田太郎"  # "様" removed by rstrip
+
+    def test_apply_template_multi_box_single_unchanged(
+        self,
+        temp_output_dir: Path,
+        temp_db: Path,
+        seed_clinic_with_template: str,
+    ):
+        """単一boxテンプレート → 従来通り動作"""
+        raw_path = temp_output_dir / "receipt-001.json"
+        result = process_input_json(raw_path, model="mock", output_dir=temp_output_dir, db_path=temp_db)
+
+        assert result is not None
+        assert result["amount"] == 3800  # not overridden (amount not in seed template)
+        assert result["clinic"] == "あおばクリニック"
+
+    def test_apply_template_no_template(
+        self,
+        temp_output_dir: Path,
+        temp_db: Path,
+    ):
+        """テンプレートなし → 変更なし"""
+        raw_path = temp_output_dir / "receipt-001.json"
+        result = process_input_json(raw_path, model="mock", output_dir=temp_output_dir, db_path=temp_db)
+
+        assert result is not None
+        assert result["name"] == "山田 太郎"
+        assert result["amount"] == 3800

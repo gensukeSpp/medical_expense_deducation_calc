@@ -1,5 +1,5 @@
 ---
-name: webui-db-feedback-debug
+name: auto-skill-webui-db-feedback-debug
 description: Web UI 修正が DB の座標フィードバック / テンプレート / corrections に反映されない問題の調査手順と修正パターン
 source: auto-skill
 extracted_at: '2026-07-06T01:59:14.319Z'

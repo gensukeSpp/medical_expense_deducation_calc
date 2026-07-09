@@ -1,0 +1,72 @@
+<refactoring_best_practices>
+  <general_principles>
+    <principle priority="high">
+      <name>Single Responsibility Principle (SRP)</name>
+      <description>
+        A class should have only one reason to change. When analyzing a class,
+        list all the reasons it could change. Each reason represents a separate responsibility.
+      </description>
+      <example>
+        <scenario>A service class that does data access, algorithm execution, and orchestration</scenario>
+        <good>
+          Split into:
+          - Repository (data access)
+          - Strategy (algorithm)
+          - Service (orchestration)
+        </good>
+        <bad>
+          Keeping all three responsibilities in one class with private methods.
+          This makes testing and maintenance harder.
+        </bad>
+      </example>
+    </principle>
+
+    <principle priority="high">
+      <name>Dependency Injection (DI)</name>
+      <description>
+        Dependencies should be injected via constructor, not hard-coded or created inside the class.
+        This makes testing easier and allows swapping implementations.
+      </description>
+      <example>
+        <scenario>A class that needs a database repository</scenario>
+        <good>
+          def __init__(self, repository: RepositoryProtocol):
+              self.repository = repository
+        </good>
+        <bad>
+          def __init__(self, db_path: str):
+              self.db = Database(db_path)
+        </bad>
+      </example>
+    </principle>
+
+    <principle priority="high">
+      <name>Keep existing behavior intact</name>
+      <description>
+        Refactoring should not change observable behavior. Always run tests
+        and verify that the code works the same way after changes.
+      </description>
+    </principle>
+  </general_principles>
+
+  <code_conventions>
+    <convention category="interfaces">
+      <rule>Use Protocol classes for dependency interfaces</rule>
+      <example>
+        class RepositoryProtocol(Protocol):
+            def get_entries(self, id: str) -> List[Dict]: ...
+      </example>
+    </convention>
+
+    <convention category="separation">
+      <rule>One file per class (except closely related small classes)</rule>
+      <rule>One directory per domain/service layer</rule>
+    </convention>
+
+    <convention category="naming">
+      <rule>Repository: *Repository (e.g., ReceiptDatabaseRepository)</rule>
+      <rule>Strategy: *Strategy (e.g., TextSearchStrategy)</rule>
+      <rule>Service: *Service (e.g., OCRCoordinateService)</rule>
+    </convention>
+  </code_conventions>
+</refactoring_best_practices>

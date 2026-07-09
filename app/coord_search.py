@@ -183,3 +183,83 @@ def search_by_proximity_multi(
     for field_name, target_box in field_box_map.items():
         result[field_name] = search_by_proximity(ocr_entries, target_box, threshold)
     return result
+
+
+def _is_multi_box(value: Any) -> bool:
+    """Check if a field value is a multi-box (list of boxes) format.
+
+    Multi-box format: [[[x1,y1],[x2,y2],...], [[x1,y1],[x2,y2],...]]
+    Single-box format: [[x1,y1],[x2,y2],[x3,y3],[x4,y4]]
+
+    Args:
+        value: The field value to check.
+
+    Returns:
+        True if value is multi-box, False otherwise.
+    """
+    if not isinstance(value, list) or not value:
+        return False
+    if not isinstance(value[0], list) or not value[0]:
+        return False
+    return isinstance(value[0][0], list)
+
+
+def search_fields_by_proximity(
+    ocr_entries: List[Dict[str, Any]],
+    field_box_map: Dict[str, Any],
+    threshold: float = 20.0,
+) -> Dict[str, Optional[str]]:
+    """Search fields by proximity, supporting both single and multi-box formats.
+
+    Single-box fields use search_by_proximity() directly.
+    Multi-box fields (e.g., split name) search each box, concatenate texts
+    in X-coordinate order, and strip the "様" suffix.
+
+    Args:
+        ocr_entries: List of OCR result dicts.
+        field_box_map: Mapping of field names to box(es).
+            - Single box: List[List[int]] — 4-point polygon
+            - Multi box: List[List[List[int]]] — list of 4-point polygons
+        threshold: Maximum pixel distance for proximity matching.
+
+    Returns:
+        Dict mapping field names to concatenated text or None if not found.
+    """
+    result: Dict[str, Optional[str]] = {}
+    for field_name, boxes in field_box_map.items():
+        if boxes is None:
+            result[field_name] = None
+            continue
+
+        if _is_multi_box(boxes):
+            # Multi-box: search each box, concatenate texts in X order
+            texts_with_x: List[tuple[str, float]] = []
+            all_found = True
+            for sub_box in boxes:
+                match = search_by_proximity(ocr_entries, sub_box, threshold)
+                if match and match.get("text"):
+                    cx = _calculate_box_center(sub_box)
+                    x_center = cx[0] if cx else 0.0
+                    texts_with_x.append((match["text"], x_center))
+                else:
+                    all_found = False
+                    break
+
+            if all_found and texts_with_x:
+                # Sort by X coordinate (left to right)
+                texts_with_x.sort(key=lambda t: t[1])
+                concat_text = "".join(t[0] for t in texts_with_x)
+                # Strip "様" suffix
+                concat_text = concat_text.rstrip("様")
+                result[field_name] = concat_text
+            else:
+                result[field_name] = None
+        else:
+            # Single box: use existing search_by_proximity
+            match = search_by_proximity(ocr_entries, boxes, threshold)
+            if match and match.get("text"):
+                result[field_name] = match["text"]
+            else:
+                result[field_name] = None
+
+    return result

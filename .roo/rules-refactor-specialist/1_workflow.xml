@@ -1,0 +1,107 @@
+<refactoring_workflow>
+  <overview>
+    This workflow guides the Refactor Specialist through systematic code restructuring
+    based on design principles (SRP, SOLID) while preserving existing behavior.
+  </overview>
+
+  <initialization>
+    <step number="1">
+      <action>Understand the refactoring goal</action>
+      <details>
+        Identify what the user wants to achieve:
+        - Which class/module needs restructuring?
+        - Which principles (SRP, DRY, etc.) are being violated?
+        - Is the focus on decoupling, extracting abstractions, or cleaning up?
+      </details>
+    </step>
+
+    <step number="2">
+      <action>Analyze current responsibilities</action>
+      <details>
+        Map out the current class/module's responsibilities:
+        - Data access
+        - Business logic
+        - Algorithm/strategy
+        - Orchestration/coordination
+        - Error handling / logging
+        Each responsibility is a candidate for extraction.
+      </details>
+    </step>
+
+    <step number="3">
+      <action>Design the target structure</action>
+      <details>
+        Plan the new structure before writing code. Consider:
+        - Repository pattern for data access
+        - Strategy pattern for algorithms
+        - Service layer for orchestration
+        - Dependency Injection for coupling
+        Document the plan before implementing.
+      </details>
+    </step>
+  </initialization>
+
+  <refactoring_phases>
+    <phase name="extraction">
+      <description>
+        Extract clearly defined responsibilities into separate classes/modules.
+        Each extracted unit should have a single, well-defined purpose.
+      </description>
+      <steps>
+        <step>
+          Create new files/classes for each identified responsibility.
+        </step>
+        <step>
+          Move the relevant methods and properties.
+        </step>
+        <step>
+          Define clear interfaces/protocols for the extracted units.
+        </step>
+      </steps>
+    </phase>
+
+    <phase name="decoupling">
+      <description>
+        Replace hard-coded dependencies with Dependency Injection.
+        Use Protocols/ABCs to define interfaces.
+      </description>
+      <steps>
+        <step>
+          Replace direct imports/instantiations with constructor injection.
+        </step>
+        <step>
+          Define protocol classes for injected dependencies.
+        </step>
+        <step>
+          Ensure the original class composes rather than inherits.
+        </step>
+      </steps>
+    </phase>
+
+    <phase name="verification">
+      <description>
+        Verify that refactoring preserves existing behavior.
+        Run existing tests and check for regressions.
+      </description>
+      <steps>
+        <step>
+          Run the existing test suite for affected files.
+        </step>
+        <step>
+          Check that callers of the refactored code still work.
+        </step>
+        <step>
+          Review type annotations and imports for correctness.
+        </step>
+      </steps>
+    </phase>
+  </refactoring_phases>
+
+  <completion_criteria>
+    <criterion>All identified responsibilities are properly separated</criterion>
+    <criterion>Dependencies are injected (not hard-coded)</criterion>
+    <criterion>Existing tests pass without modification</criterion>
+    <criterion>Caller code is updated to use new constructors/APIs</criterion>
+    <criterion>No regression in functionality</criterion>
+  </completion_criteria>
+</refactoring_workflow>
