@@ -37,6 +37,7 @@ class OCRCoordinateRepositoryAdapter:
                 if isinstance(ocr_entries, list):
                     return ocr_entries
                 # 移行前のコード（旧 _get_ocr_entries）では dict 形式も考慮されていましたが、新しい実装では isinstance(ocr_entries, list) の判定のみとなっており...
+                # ↑ https://github.com/gensukeSpp/medical_expense_deducation_calc/pull/30
                 # 【注意】おそらく SRP レビュー対応のとき、ここを変更する際は、要確認!!
                 if isinstance(ocr_entries, dict):
                     if "words" in ocr_entries:

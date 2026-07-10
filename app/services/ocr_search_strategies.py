@@ -53,6 +53,10 @@ class MultiBoxSubstringStrategy:
         if not ocr_entries or not full_query:
             return None
 
+        from app.normalization import normalize_text
+
+        norm_query = normalize_text(full_query)
+
         # Step 1: Group OCR entries by Y-center into lines
         lines: Dict[float, List[Dict[str, Any]]] = defaultdict(list)
         for entry in ocr_entries:
@@ -84,7 +88,6 @@ class MultiBoxSubstringStrategy:
 
                 clean_text = text.replace("様", "").strip()
                 norm_clean = normalize_text(clean_text)
-                norm_query = normalize_text(full_query)
                 if norm_query in norm_clean or norm_clean in norm_query:
                     candidates.append(entry)
 
