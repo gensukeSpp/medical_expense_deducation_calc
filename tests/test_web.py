@@ -254,7 +254,7 @@ def test_correction_creates_template(tmp_path):
 
     with TestClient(app) as client:
         # 修正実行
-        response = client.put("/receipt-001", json={"amount": 5000})
+        response = client.put("/receipt-001", json={"amount": 3800})
         assert response.status_code == 200
 
         # 修正后: templates テーブルに新規にレコードがあることを確認

@@ -40,7 +40,7 @@ def temp_output_dir(tmp_path: Path) -> Path:
     out_dir.mkdir()
 
     # raw_data.json (with coordinates)
-    write_json_atomic(out_dir / "receipt-001.json", SAMPLE_OCR_ENTRIES)
+    write_json_atomic(out_dir / "receipt-001-raw_data.json", SAMPLE_OCR_ENTRIES)
 
     # structured_data.json
     data = {"name": "山田 太郎", "clinic": "あおばクリニック", "amount": 3800, "date": "2026-01-15"}
@@ -193,7 +193,7 @@ class TestCorrectionFeedbackEndToEnd:
         assert coords_before == {}
 
         # Make a correction via PUT
-        response = client.put("/receipt-001", json={"amount": 5000})
+        response = client.put("/receipt-001", json={"amount": "3,800"})
         assert response.status_code == 200
 
         # Verify template has been updated with amount coordinates

@@ -68,6 +68,8 @@ skill("auto-skill-arch-progress")
 | `app/web/templates/` | Jinja2 templates for Web UI |
 | `tests/` | Unit + integration + E2E test suites (11 test files) |
 | `tasks/issue_N/` | Issue-specific task plans and E2E runners |
+| `.gemini/agents/` | Subagent definitions (e.g., `implementation_leak_checker.md`) |
+| `.qwen/skills/` | Local Qwen Code skills (e.g., `auto-skill-issue-plan`) |
 | `docs/` | Architecture docs, schema definitions (`schema.sql`) |
 | `pyproject.toml` | Project config, dependencies, Black config |
 | `要件定義書.md` | Core requirements and functional spec (Japanese) |
@@ -145,6 +147,13 @@ Convention: run Black before committing. Config in `pyproject.toml` (line-length
 - **Service Layer**: Cross-module business logic lives in `app/services/`.
 - **Testing**: pytest. Prefer integration tests with real DB/fixtures over mocks.
 - **Security**: No hardcoded secrets. Use env vars for configuration.
+- **Implementation Leak Check (PR作成前)**: `.gemini/agents/implementation_leak_checker.md`
+  サブエージェントを用いて実装漏れを検証する。チェック時は QWEN.md・`docs/` の該当設計書・`tasks/issue_N/`
+  の全ファイルをコンテキストとして引き渡す。検証観点は「テキスト正規化の必要性」「空間的制約」「エッジケース処理」「例外安全
+  性」「後方互換性」の5つ。チェック→修正→再チェックのサイクルですべて「問題なし」になるまでループする。手順詳細は
+  `auto-skill-issue-plan` スキルのStep 10を参照。
+
+
 
 ## Current Progress
 

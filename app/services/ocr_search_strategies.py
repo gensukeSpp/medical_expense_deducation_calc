@@ -79,8 +79,13 @@ class MultiBoxSubstringStrategy:
                 text = entry.get("text", "")
                 if not text:
                     continue
+                # 日本語のOCR結果では全角・半角の揺れが頻繁に発生するため、normalize_text を適用してから比較を行わないと、サブストリングマッチが予期せず失敗する可能性が高くなります。
+                from app.normalization import normalize_text
+
                 clean_text = text.replace("様", "").strip()
-                if full_query in clean_text or clean_text in full_query:
+                norm_clean = normalize_text(clean_text)
+                norm_query = normalize_text(full_query)
+                if norm_query in norm_clean or norm_clean in norm_query:
                     candidates.append(entry)
 
             if not candidates:

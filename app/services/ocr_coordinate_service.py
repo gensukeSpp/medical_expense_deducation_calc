@@ -36,6 +36,14 @@ class OCRCoordinateRepositoryAdapter:
                 ocr_entries = receipt.get("ocr_json")
                 if isinstance(ocr_entries, list):
                     return ocr_entries
+                # 移行前のコード（旧 _get_ocr_entries）では dict 形式も考慮されていましたが、新しい実装では isinstance(ocr_entries, list) の判定のみとなっており...
+                # 【注意】おそらく SRP レビュー対応のとき、ここを変更する際は、要確認!!
+                if isinstance(ocr_entries, dict):
+                    if "words" in ocr_entries:
+                        return ocr_entries["words"]
+                    if "text_lines" in ocr_entries:
+                        return [{"text": t} for t in ocr_entries["text_lines"]]
+                    return ocr_entries.get("ocr_entries") or ocr_entries.get("ocr_json") or ocr_entries.get("data")
 
         if self.output_dir:
             candidates = [self.output_dir / f"{file_stem}-raw_data.json"]
@@ -109,8 +117,8 @@ class OCRCoordinateService:
         for field_name, new_value in updates.items():
             if new_value is None or str(new_value).strip() == "":
                 continue
-            old_value = old_data.get(field_name)
-            query_val = old_value if old_value not in (None, "") else new_value
+            # Use the new value as the query for coordinate search
+            query_val = new_value
             if query_val is not None:
                 field_queries[field_name] = str(query_val)
         return field_queries
@@ -132,6 +140,7 @@ class OCRCoordinateService:
         if template and template.get("coords_corrections"):
             proximity_results = search_by_proximity_multi(ocr_entries, template["coords_corrections"])
             for field_name, match in proximity_results.items():
+                # 修正対象のフィールドに対してすでに検索戦略で新しい座標が見つかっている場合はスキップする
                 if field_name in field_queries and coord_results.get(field_name) is not None:
                     continue
                 if match and match.get("box"):
@@ -178,17 +187,22 @@ class OCRCoordinateService:
                 return None
 
             coord_results = self._resolve_coord_results(ocr_entries, field_queries, clinic_id)
+            """
+            リポジトリのみがインジェクションされて db_path が直接渡されなかった場合、self.db_path は None になります。\n
+            この場合、self.repository.db_path から取得できるデータベースパスを利用するようにフォールバックしないと、feedback_processor が None を受け取ってエラーになります。
+            """
+            resolved_db_path = self.db_path or self.repository.db_path
 
             if hasattr(self.feedback_processor, "process"):
                 return self.feedback_processor.process(
-                    db_path=self.db_path,
+                    db_path=resolved_db_path,
                     clinic_id=clinic_id,
                     field_coords_map=coord_results,
                     receipt_id=receipt_id,
                 )
 
             return self.feedback_processor(
-                db_path=self.db_path,
+                db_path=resolved_db_path,
                 clinic_id=clinic_id,
                 field_coords_map=coord_results,
                 receipt_id=receipt_id,

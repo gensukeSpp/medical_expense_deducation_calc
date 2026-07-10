@@ -236,7 +236,10 @@ class ReceiptDatabaseRepository:
             # already present before and only another field was corrected.
             current_clinic = updated_data.get("clinic")
             old_clinic = old_data.get("clinic")
-            if current_clinic or old_clinic:
+            # クリニックIDの更新は、「クリニック名が実際に変更された場合（current_clinic != old_clinic）」\n
+            # または「レシートが新規作成された場合（receipt is None）」、\n
+            # または「既存のクリニックIDが NULL の場合」のみに限定する
+            if (current_clinic != old_clinic) or (receipt is None and current_clinic) or (clinic_id is None and current_clinic):
                 if current_clinic:
                     try:
                         clinic_id = self.get_or_create_clinic(str(current_clinic))
