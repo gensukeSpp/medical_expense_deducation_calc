@@ -11,7 +11,7 @@ from app.normalization import normalize_extracted
 from app.output import write_json_atomic
 from app.error_logging import append_error
 from app.db import insert_receipt, get_or_create_clinic, get_latest_template_by_clinic
-from app.coord_search import search_by_proximity_multi
+from app.coord_search import search_fields_by_proximity
 
 logger = logging.getLogger(__name__)
 
@@ -66,14 +66,14 @@ class ExtractionService:
                         # text_lines は box なし → 近接検索不可、スキップ
 
                     if ocr_entries:
-                        proximity_results = search_by_proximity_multi(
+                        proximity_texts = search_fields_by_proximity(
                             ocr_entries,
                             coords,
                             threshold=DEFAULT_PROXIMITY_THRESHOLD,
                         )
-                        for field_name, match in proximity_results.items():
-                            if match and match.get("text") and field_name in extracted:
-                                extracted[field_name] = match["text"]
+                        for field_name, concat_text in proximity_texts.items():
+                            if concat_text and field_name in extracted:
+                                extracted[field_name] = concat_text
         except Exception as e:
             logger.error(f"Template proximity correction failed: {e}")
         return extracted

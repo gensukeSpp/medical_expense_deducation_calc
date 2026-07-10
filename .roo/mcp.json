@@ -1,0 +1,48 @@
+{
+	"mcpServers": {
+		"serena": {
+			"command": "uvx",
+			"args": [
+				"--from",
+				"git+https://github.com/oraios/serena",
+				"serena",
+				"serena-mcp-server",
+				"--context",
+				"ide-assistant",
+				"--project",
+				"/home/nabu_dvl/workspace/OCR_app/medical_exp_deducation_calc"
+			],
+			"disabled": true,
+			"alwaysAllow": []
+		},
+		"context7": {
+			"command": "npx",
+			"args": [
+				"-y",
+				"@upstash/context7-mcp@latest"
+			]
+		},
+    "Filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "."
+      ]
+    },
+    "memory": {
+      "command": "npx",
+      "args":[
+        "-y",
+        "@modelcontextprotocol/server-memory"
+      ]
+    },
+    "linksee": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "linksee-memory"
+      ]
+    }
+	}
+}

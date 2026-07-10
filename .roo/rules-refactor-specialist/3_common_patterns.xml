@@ -1,0 +1,98 @@
+<refactoring_patterns>
+  <overview>
+    Common patterns used when refactoring for SRP compliance.
+  </overview>
+
+  <pattern name="repository_extraction">
+    <description>
+      Extract data access logic from a service class into a dedicated Repository class.
+    </description>
+    <before>
+class MyService:
+    def __init__(self, db_path: str):
+        self.db_path = db_path
+
+    def _load_data(self, id: str):
+        # direct DB access logic
+        pass
+    </before>
+    <after>
+class MyRepository:
+    def __init__(self, db_path: str):
+        self.db_path = db_path
+
+    def load_data(self, id: str):
+        # DB access logic moved here
+        pass
+
+class MyService:
+    def __init__(self, repository: MyRepository):
+        self.repository = repository
+    </after>
+  </pattern>
+
+  <pattern name="strategy_extraction">
+    <description>
+      Extract algorithm/strategy logic into pluggable Strategy classes.
+    </description>
+    <before>
+def process(self, data):
+    # Strategy A
+    result_a = self._algorithm_a(data)
+    if not result_a:
+        # Strategy B
+        result_a = self._algorithm_b(data)
+    return result_a
+    </before>
+    <after>
+class StrategyProtocol(Protocol):
+    def execute(self, data) -> Optional[Result]: ...
+
+class StrategyA:
+    def execute(self, data) -> Optional[Result]: ...
+
+class StrategyB:
+    def execute(self, data) -> Optional[Result]: ...
+
+class Processor:
+    def __init__(self, strategies: List[StrategyProtocol]):
+        self.strategies = strategies
+
+    def process(self, data):
+        for strategy in self.strategies:
+            result = strategy.execute(data)
+            if result is not None:
+                return result
+        return None
+    </after>
+  </pattern>
+
+  <pattern name="feedback_processor_extraction">
+    <description>
+      Extract feedback/template processing logic into a dedicated processor.
+    </description>
+    <before>
+class Service:
+    def process_feedback(self, clinic_id, coords, receipt_id):
+        return process_correction_feedback(
+            db_path=self.db_path,
+            clinic_id=clinic_id,
+            field_coords_map=coords,
+            receipt_id=receipt_id,
+        )
+    </before>
+    <after>
+class FeedbackProcessor:
+    def __init__(self, db_path: Path):
+        self.db_path = db_path
+
+    def process(self, clinic_id, field_coords_map, receipt_id):
+        return process_correction_feedback(
+            db_path=self.db_path,
+            clinic_id=clinic_id,
+            field_coords_map=field_coords_map,
+            receipt_id=receipt_id,
+        )
+    </after>
+  </pattern>
+</refactoring_patterns>

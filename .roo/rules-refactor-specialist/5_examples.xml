@@ -1,0 +1,77 @@
+<refactoring_examples>
+  <overview>
+    Complete examples of SRP-based refactoring, based on the OCRCoordinateService case.
+  </overview>
+
+  <example name="ocr_coordinate_service_refactoring">
+    <scenario>
+      The OCRCoordinateService class violates SRP by handling:
+      1. Data access (DB queries, file loading)
+      2. Search algorithms (text search, multi-box substring, proximity)
+      3. Feedback processing (template feedback)
+    </scenario>
+
+    <user_request>
+      Refactor OCRCoordinateService to follow SRP.
+    </user_request>
+
+    <workflow>
+      <step number="1">
+        <description>Analyze current responsibilities</description>
+        <approach>
+          Read the class and list all methods. Group them by responsibility:
+          - Data access: _get_ocr_entries, _load_raw_data
+          - Search algorithms: _find_multi_boxes_by_substring
+          - Orchestration: process_feedback
+          - Feedback processing: _process_correction_feedback
+        </approach>
+        <expected_outcome>
+          Clear list of 4 responsibilities to separate.
+        </expected_outcome>
+      </step>
+
+      <step number="2">
+        <description>Extract search strategies</description>
+        <approach>
+          Create a new file app/services/ocr_search_strategies.py with:
+          - TextSearchStrategy (wraps search_coordinates)
+          - MultiBoxSubstringStrategy (extracted from _find_multi_boxes_by_substring)
+          - OCRSearchStrategy protocol
+        </approach>
+      </step>
+
+      <step number="3">
+        <description>Refactor constructor to use DI</description>
+        <approach>
+          Change OCRCoordinateService.__init__ to accept:
+          - repository (for data access)
+          - search_strategies (list of strategy instances)
+          - feedback_processor (for feedback processing)
+          Remove direct db_path and output_dir dependencies.
+        </approach>
+      </step>
+
+      <step number="4">
+        <description>Update process_feedback to use injected dependencies</description>
+        <approach>
+          Replace direct calls to _get_ocr_entries with repository.get_ocr_entries().
+          Replace direct search calls with strategy.search().
+          Replace _process_correction_feedback with feedback_processor.process().
+        </approach>
+      </step>
+
+      <step number="5">
+        <description>Update callers</description>
+        <approach>
+          Update ReceiptService and ReceiptUpdater to construct OCRCoordinateService
+          with the new DI-based constructor.
+        </approach>
+      </step>
+    </workflow>
+
+    <completion>
+      OCRCoordinateService now only orchestrates: it delegates data access to a repository,
+      search to strategies, and feedback to a processor. Each component has a single responsibility.
+    </completion>
+  </example>
+</refactoring_examples>

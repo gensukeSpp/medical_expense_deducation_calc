@@ -14,6 +14,14 @@ from app.db import (
 )
 
 
+def _coerce_receipt_lookup_candidates(file_stem: str, file_path: Path) -> list[str]:
+    candidates = [file_stem]
+    candidates.append(str(file_path))
+    candidates.append(str(file_path.stem))
+    candidates.append(str(file_path.with_suffix("")))
+    return list(dict.fromkeys(candidates))
+
+
 class ReceiptDatabaseRepository:
     """Repository for handling database operations related to receipts."""
 
@@ -188,8 +196,18 @@ class ReceiptDatabaseRepository:
             return {"receipt_id": None, "clinic_id": None, "error": "Database not available"}
 
         try:
-            # Get or create receipt record
-            receipt = self.get_receipt_by_id(file_stem)
+            # Get or create receipt record.
+            # Web updates often pass the file stem, while the persisted receipt row may
+            # already exist under the same stem or a source-path-based identifier.
+            receipt = None
+            for candidate in _coerce_receipt_lookup_candidates(file_stem, file_path):
+                receipt = self.get_receipt_by_id(candidate)
+                if receipt:
+                    break
+                receipt = self.get_receipt_by_source_path(str(file_path))
+                if receipt:
+                    break
+
             if receipt:
                 receipt_id = receipt["id"]
                 clinic_id = receipt.get("clinic_id")
@@ -214,11 +232,14 @@ class ReceiptDatabaseRepository:
                     new_value=str(new_value) if new_value is not None else None,
                 )
 
-            # Update clinic ID if needed
-            # クリニック名が変更された場合は、clinic_id が None であってもデータベースを更新するように修正すべきです。
+            # Update clinic ID when clinic information exists, even if the value was
+            # already present before and only another field was corrected.
             current_clinic = updated_data.get("clinic")
             old_clinic = old_data.get("clinic")
-            if current_clinic != old_clinic:
+            # クリニックIDの更新は、「クリニック名が実際に変更された場合（current_clinic != old_clinic）」\n
+            # または「レシートが新規作成された場合（receipt is None）」、\n
+            # または「既存のクリニックIDが NULL の場合」のみに限定する
+            if (current_clinic != old_clinic) or (receipt is None and current_clinic) or (clinic_id is None and current_clinic):
                 if current_clinic:
                     try:
                         clinic_id = self.get_or_create_clinic(str(current_clinic))

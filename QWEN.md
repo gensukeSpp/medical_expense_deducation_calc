@@ -28,6 +28,23 @@ input image → image_resize (short side = 960px, grayscale)
             → Web UI (confirm/correct via FastAPI + htmx)
 ```
 
+### Progress Check (サブエージェント)
+
+実装着手前に現在の進捗を確認するには、`auto-skill-arch-progress` スキルを呼び出す:
+
+```bash
+skill("auto-skill-arch-progress")
+```
+
+このスキルは以下を自動実行する:
+1. `docs/architecture/README.md` から最新スナップショットを特定
+2. 最新スナップショットの全文読み取り
+3. `QWEN.md` の Current Progress セクション確認
+4. `git log --oneline -10` で直近のコミット状況確認
+5. コンパクトな進捗サマリを出力
+
+読み取り専用であり、いかなるファイルも変更しない。
+
 ## Key Files & Directories
 
 | Path | Purpose |
@@ -51,6 +68,8 @@ input image → image_resize (short side = 960px, grayscale)
 | `app/web/templates/` | Jinja2 templates for Web UI |
 | `tests/` | Unit + integration + E2E test suites (11 test files) |
 | `tasks/issue_N/` | Issue-specific task plans and E2E runners |
+| `.gemini/agents/` | Subagent definitions (e.g., `implementation_leak_checker.md`) |
+| `.qwen/skills/` | Local Qwen Code skills (e.g., `auto-skill-issue-plan`) |
 | `docs/` | Architecture docs, schema definitions (`schema.sql`) |
 | `pyproject.toml` | Project config, dependencies, Black config |
 | `要件定義書.md` | Core requirements and functional spec (Japanese) |
@@ -128,6 +147,13 @@ Convention: run Black before committing. Config in `pyproject.toml` (line-length
 - **Service Layer**: Cross-module business logic lives in `app/services/`.
 - **Testing**: pytest. Prefer integration tests with real DB/fixtures over mocks.
 - **Security**: No hardcoded secrets. Use env vars for configuration.
+- **Implementation Leak Check (PR作成前)**: `.gemini/agents/implementation_leak_checker.md`
+  サブエージェントを用いて実装漏れを検証する。チェック時は QWEN.md・`docs/` の該当設計書・`tasks/issue_N/`
+  の全ファイルをコンテキストとして引き渡す。検証観点は「テキスト正規化の必要性」「空間的制約」「エッジケース処理」「例外安全
+  性」「後方互換性」の5つ。チェック→修正→再チェックのサイクルですべて「問題なし」になるまでループする。手順詳細は
+  `auto-skill-issue-plan` スキルのStep 10を参照。
+
+
 
 ## Current Progress
 
@@ -146,6 +172,10 @@ Convention: run Black before committing. Config in `pyproject.toml` (line-length
 - **Empty old_value fallback**: coordinate search uses new_value when old_value is empty (Bug A fix)
 - **Sequential correction support**: `add_correction` auto-resolves old_value conflicts (Bug C fix)
 - **元号 (Reiwa) date parsing**: `令和N年M月D日`, `R{N}.M.D`, `令{N}/M/D` → ISO date
+- **Split-name multi-box auto-detection**: OCR で氏名が複数テキストボックスに分割されたケース（例: "山田"+"太郎様"）を自動検出し、Forward（修正→テンプレート学習）・Reverse（テンプレート→抽出）の両方向でマルチボックス対応。`tasks/name_separated_coords/` 全14テスト通過。
+  - Forward: `_find_multi_boxes_by_substring()` — ライン検出 + サブストリングマッチ + 類似度検証
+  - Reverse: `search_fields_by_proximity()` — 各boxの近接検索 → X順連結 → "様"除去
+  - 後方互換: 単一box (`List[List[int]]`) とマルチbox (`List[List[List[int]]]`) の自動判別
 
 ### In Progress / Upcoming
 - Template correction value learning (real-world data)

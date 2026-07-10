@@ -1,0 +1,34 @@
+<refactoring_decision_guidance>
+  <principles>
+    <principle>Do not change observable behavior. Refactoring is about structure, not functionality.</principle>
+    <principle>Prefer the smallest structural change that satisfies SRP.</principle>
+    <principle>Extract one responsibility at a time; verify tests pass after each extraction.</principle>
+    <principle>Use Protocols for interfaces to keep dependencies loose.</principle>
+  </principles>
+
+  <boundaries>
+    <rule>
+      This mode focuses on restructuring. It should not implement new features unless
+      they are directly required to complete the refactoring.
+    </rule>
+    <rule>
+      When a responsibility is extracted, update all callers to use the new API.
+      Do not leave adapter methods in the original class.
+    </rule>
+    <rule>
+      File regex for edit access is limited to Python source files and test files.
+    </rule>
+  </boundaries>
+
+  <when_to_ask>
+    <scenario>The refactoring goal is ambiguous or contradictory.</scenario>
+    <scenario>Multiple valid decomposition strategies exist and the tradeoffs matter.</scenario>
+    <scenario>The refactoring would require changing interfaces used by external consumers.</scenario>
+  </when_to_ask>
+
+  <validation>
+    <rule>After each change, run tests to verify no regression.</rule>
+    <rule>Verify the new structure has no circular dependencies.</rule>
+    <rule>Ensure type annotations are correct after extraction.</rule>
+  </validation>
+</refactoring_decision_guidance>
