@@ -50,6 +50,29 @@ def process_single_image(args: argparse.Namespace, input_dir: Path, output_dir: 
             else:
                 logging.info("Saved %d items to %s", len(structured), output_json_path)
 
+            # Coordinate normalization: convert absolute coords to relative
+            low_confidence = False
+            try:
+                from app.coord_normalizer import normalize_coordinates
+
+                norm_result = normalize_coordinates(output_json_path)
+                low_confidence = norm_result.get("low_confidence", False)
+                if norm_result.get("normalized"):
+                    logging.info(
+                        "Normalized coordinates for %s (offset_x=%d, offset_y=%d)",
+                        output_json_path,
+                        norm_result["offset_x"],
+                        norm_result["offset_y"],
+                    )
+                elif low_confidence:
+                    logging.info(
+                        "Skipped coordinate normalization for %s (topmost confidence=%.3f < 0.8)",
+                        output_json_path,
+                        norm_result.get("topmost_confidence", 0),
+                    )
+            except Exception:
+                logging.exception("Coordinate normalization failed for %s", output_json_path)
+
             # Generate structured data from OCR raw data
             try:
                 from app.structural_parser import process_input_json
@@ -63,6 +86,21 @@ def process_single_image(args: argparse.Namespace, input_dir: Path, output_dir: 
                 logging.info("Structured data generated for %s", output_json_path)
             except Exception:
                 logging.exception("Failed to generate structured data for %s", output_json_path)
+
+            # Set low_confidence flag in structured data if needed
+            if low_confidence:
+                try:
+                    from app.input import read_json
+                    from app.output import write_json_atomic
+
+                    structured_data_path = output_dir / f"{image_path.stem}_{mtime}-structured_data.json"
+                    if structured_data_path.exists():
+                        sd = read_json(structured_data_path)
+                        sd["low_confidence"] = True
+                        write_json_atomic(structured_data_path, sd)
+                        logging.info("Set low_confidence flag in %s", structured_data_path)
+                except Exception:
+                    logging.exception("Failed to set low_confidence flag for %s", output_json_path)
         except Exception:
             logging.exception("Processing failed for %s", image_path)
             sys.exit(1)

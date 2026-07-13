@@ -163,8 +163,8 @@ class TestProcessInputJson:
         assert result["amount"] == 3800
 
     def test_proximity_threshold_default(self):
-        """DEFAULT_PROXIMITY_THRESHOLD が 20.0 であること"""
-        assert DEFAULT_PROXIMITY_THRESHOLD == 20.0
+        """DEFAULT_PROXIMITY_THRESHOLD が 50.0 であること"""
+        assert DEFAULT_PROXIMITY_THRESHOLD == 50.0
 
 
 class TestApplyTemplateMultiBox:

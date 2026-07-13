@@ -49,9 +49,7 @@ def seed_split_name_receipt(temp_db: Path, tmp_path: Path):
 class TestProcessFeedbackMultiBoxFallback:
     """Tests for Forward direction substring fallback in process_feedback."""
 
-    def test_process_feedback_multi_box_fallback(
-        self, temp_db: Path, seed_split_name_receipt: dict, tmp_path: Path
-    ):
+    def test_process_feedback_multi_box_fallback(self, temp_db: Path, seed_split_name_receipt: dict, tmp_path: Path):
         """テキスト検索失敗 → サブストリングフォールバック → マルチbox保存"""
         service = OCRCoordinateService(db_path=temp_db, output_dir=tmp_path)
         clinic_id = seed_split_name_receipt["clinic_id"]
@@ -90,9 +88,7 @@ class TestProcessFeedbackMultiBoxFallback:
         assert result is not None
         assert "amount" in result["updated_fields"], "amount should be found via text search"
 
-    def test_process_feedback_fallback_low_similarity(
-        self, temp_db: Path, tmp_path: Path
-    ):
+    def test_process_feedback_fallback_low_similarity(self, temp_db: Path, tmp_path: Path):
         """連結後の類似度不足 → フォールバック reject"""
         # Create receipt with OCR entries that don't form a valid multi-box match
         clinic_id = str(uuid.uuid4())
@@ -127,9 +123,7 @@ class TestProcessFeedbackMultiBoxFallback:
         assert result is not None
         assert "name" not in result["updated_fields"]
 
-    def test_process_feedback_multi_line_reject(
-        self, temp_db: Path, tmp_path: Path
-    ):
+    def test_process_feedback_multi_line_reject(self, temp_db: Path, tmp_path: Path):
         """別ラインのサブストリング → reject"""
         clinic_id = str(uuid.uuid4())
         receipt_id = str(uuid.uuid4())

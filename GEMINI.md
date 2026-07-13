@@ -56,13 +56,13 @@ python tasks/issue_4/run_e2e.py
 
 ## Current Progress & Upcoming Tasks
 
-### Implemented Features (as of 2026-07-09)
+### Implemented Features (as of 2026-07-13)
 - Complete pipeline integration (OCR + LLM Extraction + Normalization + Automatic Parsing).
 - Coordinate-based extraction correction using clinic-specific templates (proximity threshold: 20px), now supporting multi-box regions for split-field extractions.
 - CLI integration for model and input JSON file configuration.
 - Robust date, clinic name, and monetary value normalization.
 - E2E testing framework with mockup validations.
-- **Service Layer Refactoring & SRP**: Decoupled business logic into specialized services and repositories. Enhanced coordinate service with a modular, strategy-based search mechanism (supporting exact text and multi-box substring matching).
+- **Service Layer Refactoring & SRP**: Decoupled business logic into specialized services and repositories. Introduced `ReceiptUpdater` for centralized orchestration of update operations, further strengthening SRP.
 - **Robustness Fixes**: Fixed issues with plain numeric amount parsing, DB/JSON data synchronization (clinic_id updates), and robust template data ingestion. Resilient receipt lookup for database operations.
 
 ### Upcoming Tasks

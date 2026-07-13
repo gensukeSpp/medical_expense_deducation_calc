@@ -16,7 +16,7 @@ from app.coord_search import search_fields_by_proximity
 logger = logging.getLogger(__name__)
 
 # Default pixel proximity threshold for coordinate-based template matching.
-DEFAULT_PROXIMITY_THRESHOLD: float = 20.0
+DEFAULT_PROXIMITY_THRESHOLD: float = 50.0
 
 
 class OCRResultLoader:

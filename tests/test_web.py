@@ -265,3 +265,106 @@ def test_correction_creates_template(tmp_path):
         template_count = cursor.fetchone()[0]
         conn.close()
         assert template_count >= 1, "templates テーブルにレコードが作成されている"
+
+
+def test_index_low_confidence_warning(tmp_path):
+    """一覧ページで low_confidence なレシートに警告が表示される"""
+    out_dir = tmp_path / "output_json"
+    out_dir.mkdir()
+
+    from app.output import write_json_atomic
+
+    # low_confidence = True のレシート
+    data1 = {
+        "name": "山田 太郎",
+        "clinic": "あおばクリニック",
+        "amount": 3800,
+        "date": "2026-01-15",
+        "low_confidence": True,
+    }
+    write_json_atomic(out_dir / "receipt-001-structured_data.json", data1)
+
+    # low_confidence なしのレシート
+    data2 = {"name": "花子", "clinic": "みどり薬局", "amount": 1200, "date": "2026-02-20"}
+    write_json_atomic(out_dir / "receipt-002-structured_data.json", data2)
+
+    from app.web.server import create_app
+    from fastapi.testclient import TestClient
+
+    app = create_app(output_dir=str(out_dir), db_path=None)
+    with TestClient(app) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+
+        # low_confidence レシートに警告が表示される
+        assert "あおばクリニック-2026-01-15" in response.text
+        assert "&#9888; 読み取り不十分" in response.text or "⚠" in response.text
+
+        # 通常のレシートには警告が表示されない
+        assert "みどり薬局-2026-02-20" in response.text
+
+
+def test_correction_low_confidence_skips_template(tmp_path):
+    """low_confidence レシートの修正では templates テーブルが更新されない"""
+    out_dir = tmp_path / "output_json"
+    out_dir.mkdir()
+
+    from app.output import write_json_atomic
+
+    # low_confidence フラグ付き structured_data
+    data = {
+        "name": "山田 太郎",
+        "clinic": "あおばクリニック",
+        "amount": 3800,
+        "date": "2026-01-15",
+        "low_confidence": True,
+    }
+    write_json_atomic(out_dir / "receipt-001-structured_data.json", data)
+
+    # raw_data ファイル（confidence 0.5 の最上部要素）
+    import json
+
+    raw_data = [
+        {"text": "昂", "confidence": 0.5, "box": [[400, 3], [460, 3], [460, 28], [400, 28]]},
+        {"text": "あおばクリニック", "confidence": 0.92, "box": [[50, 160], [300, 160], [300, 200], [50, 200]]},
+        {"text": "3,800", "confidence": 0.88, "box": [[400, 300], [480, 300], [480, 340], [400, 340]]},
+    ]
+    write_json_atomic(out_dir / "receipt-001-1234567890-raw_data.json", raw_data)
+
+    # DB 準備
+    db_file = tmp_path / "test_db.sqlite3"
+    from app.db_migrations import run_migrations
+
+    SCHEMA_PATH = Path("docs/schema.sql")
+    run_migrations(db_file, SCHEMA_PATH)
+
+    from app.web.server import create_app
+    from fastapi.testclient import TestClient
+
+    app = create_app(output_dir=str(out_dir), db_path=str(db_file))
+    with TestClient(app) as client:
+        # 修正実行
+        response = client.put("/receipt-001", json={"amount": 5000})
+        assert response.status_code == 200
+
+        # corrections テーブルにレコードが追加されている
+        import sqlite3
+
+        conn = sqlite3.connect(str(db_file))
+        cursor = conn.execute("SELECT COUNT(*) FROM corrections")
+        corr_count = cursor.fetchone()[0]
+        conn.close()
+        assert corr_count >= 1, "corrections テーブルにレコードが作成されている"
+
+        # templates テーブルは更新されていない（レコード数が 0）
+        conn = sqlite3.connect(str(db_file))
+        cursor = conn.execute("SELECT COUNT(*) FROM templates")
+        template_count = cursor.fetchone()[0]
+        conn.close()
+        assert template_count == 0, "templates テーブルは更新されていない"
+
+        # JSON ファイルの amount が更新されている
+        import json
+
+        updated = json.load(open(out_dir / "receipt-001-structured_data.json", encoding="utf-8"))
+        assert updated["amount"] == 5000

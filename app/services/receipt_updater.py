@@ -69,6 +69,9 @@ class ReceiptUpdater:
         except FileNotFoundError:
             raise FileNotFoundError(f"File not found: {file_path}")
 
+        # Check low_confidence flag — skip template updates when OCR quality is low
+        low_confidence = old_data.get("low_confidence", False)
+
         # Step 2: Apply updates and normalize
         updated_data = self.normalizer.normalize(updates, old_data)
 
@@ -92,15 +95,17 @@ class ReceiptUpdater:
                     {},
                 )
 
-        # Step 4: Coordinate feedback (delegated to service)
-        feedback_result = self.coord_service.process_feedback(
-            file_stem=file_stem,
-            file_path=file_path,
-            old_data=old_data,
-            updates=updates,
-            receipt_id=feedback_info.get("receipt_id"),
-            clinic_id=feedback_info.get("clinic_id"),
-        )
+        # Step 4: Coordinate feedback (skip if low confidence — don't update templates)
+        feedback_result = None
+        if not low_confidence:
+            feedback_result = self.coord_service.process_feedback(
+                file_stem=file_stem,
+                file_path=file_path,
+                old_data=old_data,
+                updates=updates,
+                receipt_id=feedback_info.get("receipt_id"),
+                clinic_id=feedback_info.get("clinic_id"),
+            )
 
         # Step 5: Save updated data to file
         self.file_repo.save_receipt(file_stem, updated_data)

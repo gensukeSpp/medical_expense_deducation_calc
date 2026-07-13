@@ -70,6 +70,7 @@ class ReceiptService:
                         "display_name": display_name,
                         "clinic": clinic,
                         "date": date,
+                        "low_confidence": data.get("low_confidence", False),
                     }
                 )
             except Exception as e:
