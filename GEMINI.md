@@ -58,7 +58,11 @@ python tasks/issue_4/run_e2e.py
 
 ### Implemented Features (as of 2026-07-13)
 - Complete pipeline integration (OCR + LLM Extraction + Normalization + Automatic Parsing).
-- Coordinate-based extraction correction using clinic-specific templates (proximity threshold: 20px), now supporting multi-box regions for split-field extractions.
+- **Coordinate-based Extraction & Relative Normalization (Issue #32)**:
+  - Implemented relative coordinate conversion (`normalize_coordinates`) to handle photography offsets.
+  - Increased coordinate proximity threshold from 20px to **50px** for robust matching.
+  - Added confidence-based gating: if top-element OCR confidence < 0.8, relative normalization is skipped and `low_confidence: true` is flagged in output.
+  - Implemented template update gating: Web UI corrections for `low_confidence` receipts update the corrections table but skip template table updates.
 - CLI integration for model and input JSON file configuration.
 - Robust date, clinic name, and monetary value normalization.
 - E2E testing framework with mockup validations.
