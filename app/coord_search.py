@@ -263,3 +263,107 @@ def search_fields_by_proximity(
                 result[field_name] = None
 
     return result
+
+
+def find_clinic_by_text_similarity(
+    clinic_name: str,
+    clinics: list[dict[str, Any]],
+    threshold: float = 0.6,
+) -> Optional[dict[str, Any]]:
+    """Find the best matching clinic by text similarity.
+
+    Compares the extracted clinic name against all known clinic names
+    using difflib.SequenceMatcher with normalize_text() preprocessing.
+
+    Args:
+        clinic_name: The extracted clinic name (may have OCR errors).
+        clinics: List of clinic dicts with at least 'name' key.
+        threshold: Minimum similarity ratio (0.0-1.0) to accept a match.
+                   Default 0.6.
+
+    Returns:
+        The best matching clinic dict, or None if no match meets the threshold.
+    """
+    if not clinic_name or not clinics:
+        return None
+
+    norm_query = normalize_text(clinic_name)
+    if not norm_query:
+        return None
+
+    best_ratio: float = 0.0
+    best_clinic: Optional[dict[str, Any]] = None
+
+    for clinic in clinics:
+        name = clinic.get("name", "")
+        if not name:
+            continue
+        norm_name = normalize_text(name)
+        if not norm_name:
+            continue
+        ratio = difflib.SequenceMatcher(None, norm_query, norm_name).ratio()
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best_clinic = clinic
+
+    if best_ratio >= threshold and best_clinic is not None:
+        return best_clinic
+
+    return None
+
+
+def match_template_by_layout(
+    ocr_entries: list[dict[str, Any]],
+    templates: list[dict[str, Any]],
+    proximity_threshold: float = 50.0,
+    match_ratio: float = 0.6,
+) -> Optional[dict[str, Any]]:
+    """Find a template whose field coordinates best match the OCR layout.
+
+    For each template, checks what percentage of its coords_corrections
+    fields have nearby OCR entries within the proximity threshold.
+
+    Args:
+        ocr_entries: List of OCR entry dicts with 'text', 'confidence', 'box'.
+        templates: List of template dicts with 'coords_corrections'.
+        proximity_threshold: Max pixel distance for proximity matching.
+                             Default 50.0 (DEFAULT_PROXIMITY_THRESHOLD).
+        match_ratio: Minimum ratio of matched fields (0.0-1.0) to accept.
+                     Default 0.6.
+
+    Returns:
+        The best matching template dict, or None if no match meets the ratio.
+    """
+    if not ocr_entries or not templates:
+        return None
+
+    best_template: Optional[dict[str, Any]] = None
+    best_rate: float = 0.0
+
+    for template in templates:
+        coords = template.get("coords_corrections")
+        if not coords:
+            continue
+
+        fields = list(coords.keys())
+        if not fields:
+            continue
+
+        matched_count = 0
+        for field_name in fields:
+            field_box = coords[field_name]
+            if field_box is None:
+                continue
+            match = search_by_proximity(ocr_entries, field_box, proximity_threshold)
+            if match:
+                matched_count += 1
+
+        rate = matched_count / len(fields)
+        if rate > best_rate:
+            best_rate = rate
+            best_template = template
+
+    if best_rate >= match_ratio and best_template is not None:
+        return best_template
+
+    return None

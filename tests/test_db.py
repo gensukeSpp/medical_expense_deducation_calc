@@ -11,7 +11,9 @@ from app.db import (
     get_receipt,
     upsert_clinic,
     get_clinic_by_name,
+    get_all_clinics,
     upsert_template,
+    get_all_templates_with_names,
     add_correction,
     insert_user,
 )
@@ -246,3 +248,69 @@ def test_add_correction_conflict_resolved(temp_db: Path) -> None:
     receipt = get_receipt(temp_db, receipt_id)
     assert receipt is not None
     assert receipt["normalized_json"]["amount"] == "3000"
+
+
+def test_get_all_clinics(temp_db: Path) -> None:
+    """複数クリニック登録後、全件が取得できる"""
+    upsert_clinic(temp_db, "uuid-1", "ABCクリニック")
+    upsert_clinic(temp_db, "uuid-2", "あおばクリニック")
+    upsert_clinic(temp_db, "uuid-3", "デンタルクリニック")
+
+    clinics = get_all_clinics(temp_db)
+    assert len(clinics) == 3
+    names = [c["name"] for c in clinics]
+    assert "ABCクリニック" in names
+    assert "あおばクリニック" in names
+    assert "デンタルクリニック" in names
+
+
+def test_get_all_clinics_empty(temp_db: Path) -> None:
+    """クリニック未登録時に空リストが返る"""
+    clinics = get_all_clinics(temp_db)
+    assert clinics == []
+
+
+def test_get_all_templates_with_names(temp_db: Path) -> None:
+    """テンプレートがクリニック名付きで取得できる"""
+    upsert_clinic(temp_db, "uuid-1", "ABCクリニック")
+    upsert_template(
+        temp_db,
+        "tmpl-1",
+        "uuid-1",
+        version=1,
+        coords_corrections={"amount": [[0, 0], [10, 0], [10, 10], [0, 10]]},
+    )
+
+    templates = get_all_templates_with_names(temp_db)
+    assert len(templates) == 1
+    assert templates[0]["clinic_name"] == "ABCクリニック"
+    assert templates[0]["coords_corrections"] == {"amount": [[0, 0], [10, 0], [10, 10], [0, 10]]}
+
+
+def test_get_all_templates_with_names_only_latest(temp_db: Path) -> None:
+    """複数バージョンがある場合、最新版のみ取得される"""
+    upsert_clinic(temp_db, "uuid-1", "ABCクリニック")
+    upsert_template(
+        temp_db,
+        "tmpl-1",
+        "uuid-1",
+        version=1,
+        coords_corrections={"amount": [[0, 0], [10, 0], [10, 10], [0, 10]]},
+    )
+    upsert_template(
+        temp_db,
+        "tmpl-1",
+        "uuid-1",
+        version=2,
+        coords_corrections={"amount": [[5, 5], [15, 5], [15, 15], [5, 15]]},
+    )
+
+    templates = get_all_templates_with_names(temp_db)
+    assert len(templates) == 1
+    assert templates[0]["version"] == 2  # 最新版のみ
+
+
+def test_get_all_templates_with_names_empty(temp_db: Path) -> None:
+    """テンプレート未登録時に空リストが返る"""
+    templates = get_all_templates_with_names(temp_db)
+    assert templates == []

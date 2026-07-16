@@ -24,6 +24,10 @@ input image → image_resize (short side = 960px, grayscale)
             → process_input_json (auto via watcher/processor)
                 → MockLLMClient or LLM extraction (heuristic / structured LLM)
                 → (optional) template proximity search (50px, Mock only)
+                    → 3段階フォールバック:
+                      1. クリニック名 完全一致
+                      2. テキスト類似度 (difflib, 閾値0.6)
+                      3. 座標レイアウトマッチング (50px, マッチ率60%)
                 → normalization (date, amount, clinic name)
             → output *-structured_data.json + SQLite persistence
             → Web UI (confirm/correct via FastAPI + htmx)
@@ -62,7 +66,7 @@ skill("auto-skill-arch-progress")
 | `app/processor.py` | Single-image processing pipeline orchestrator |
 | `app/db.py` | SQLite CRUD: receipts, corrections, clinic templates |
 | `app/error_logging.py` | Centralized error logging |
-| `app/coord_search.py` | Coordinate search: text similarity + box proximity (50px) |
+| `app/coord_search.py` | Coordinate search: text similarity + box proximity (50px) + hybrid layout matching (`find_clinic_by_text_similarity`, `match_template_by_layout`) |
 | `app/coord_normalizer.py` | Coordinate normalization: absolute → relative, confidence gating |
 | `app/template_feedback.py` | User feedback → template learning |
 | `app/prompts.py` | LLM prompt templates |
@@ -184,6 +188,15 @@ Convention: run Black before committing. Config in `pyproject.toml` (line-length
   - Web UI 一覧ページで `⚠ 読み取り不十分` 警告表示
   - low_confidence レシートの修正時は templates テーブル更新を抑止（corrections は通常通り反映）
 - **Proximity threshold 20px → 50px**: サンプル分析に基づき、相対化後の残差(~63px)をカバーするため 50px に引き上げ
+- **Hybrid template key matching (Issue #34)**: テンプレートマッチングのキーをクリニック名のみから、テキスト類似度+座標レイアウトの3段階フォールバックに拡張。OCRでクリニック名に文字欠けが発生してもテンプレートが適用される。
+  - Step1: クリニック名 完全一致（`get_clinic_by_name()`、従来動作）
+  - Step2: テキスト類似度マッチング（`find_clinic_by_text_similarity()`、`difflib.SequenceMatcher`、閾値0.6）
+  - Step3: 座標レイアウトマッチング（`match_template_by_layout()`、各フィールド座標の50px以内にOCRエントリがあるか、マッチ率60%以上で同レイアウト判定）
+  - マッチ時は `extracted["clinic"]` を正しい名前に上書きし、後続のDB操作が正しい既存クリニックを参照する
+  - `app/db.py` に `get_all_clinics()`, `get_all_templates_with_names()` 追加
+  - `app/coord_search.py` に `find_clinic_by_text_similarity()`, `match_template_by_layout()` 追加
+  - `app/structural_parser.py` の `_apply_template_corrections()` に3段階フォールバック実装
+  - `tasks/issue_34/` に計画文書 + テスト20ケース追加（全71テスト通過）
 
 ### In Progress / Upcoming
 - Template correction value learning (real-world data)

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from app.db import upsert_clinic, upsert_template
+from app.db import upsert_clinic, upsert_template, get_clinic_by_name, get_all_clinics, get_all_templates_with_names
 from app.db_migrations import run_migrations
 from app.output import write_json_atomic
 from app.structural_parser import process_input_json, DEFAULT_PROXIMITY_THRESHOLD
@@ -242,4 +242,123 @@ class TestApplyTemplateMultiBox:
 
         assert result is not None
         assert result["name"] == "山田 太郎"
+        assert result["amount"] == 3800
+
+
+# ──────────────────────────────────────────
+# ハイブリッドマッチング（問題点1）のテスト
+# ──────────────────────────────────────────
+
+
+class TestHybridTemplateMatching:
+    """Test hybrid fallback template matching (text similarity + layout)."""
+
+    @pytest.fixture
+    def seed_abc_clinic_with_template(self, temp_db: Path) -> str:
+        """ABCクリニック + テンプレートをDBに登録"""
+        from app.db import get_or_create_clinic
+
+        clinic_id = get_or_create_clinic(temp_db, "ABCクリニック")
+        upsert_template(
+            temp_db,
+            str(uuid.uuid4()),
+            clinic_id,
+            version=1,
+            coords_corrections={
+                "amount": [[400, 300], [480, 300], [480, 340], [400, 340]],
+                "date": [[50, 50], [200, 50], [200, 80], [50, 80]],
+            },
+        )
+        return clinic_id
+
+    def test_hybrid_exact_match_first(
+        self,
+        temp_output_dir: Path,
+        temp_db: Path,
+        seed_clinic_with_template: str,
+    ):
+        """完全一致 → Step1 でテンプレートが適用される（後方互換性）"""
+        raw_path = temp_output_dir / "receipt-001.json"
+        result = process_input_json(raw_path, model="mock", output_dir=temp_output_dir, db_path=temp_db)
+
+        assert result is not None
+        # テンプレートの amount 座標に一致する「3,800」で上書きされる
+        assert result["amount"] == 3800
+        # clinic 名はそのまま
+        assert result["clinic"] == "あおばクリニック"
+
+    def test_hybrid_text_similarity_fallback(
+        self,
+        temp_output_dir: Path,
+        temp_db: Path,
+        seed_abc_clinic_with_template: str,
+    ):
+        """文字欠け（"BC" → "ABC"） → Step2 テキスト類似度でマッチ"""
+        # クリニック名が "BCクリニック" のOCRエントリ（ABCクリニックの文字欠け想定）
+        modified_ocr = [
+            {"text": "山田 太郎", "confidence": 0.95, "box": [[50, 100], [200, 100], [200, 140], [50, 140]]},
+            {"text": "BCクリニック", "confidence": 0.85, "box": [[50, 160], [300, 160], [300, 200], [50, 200]]},
+            {"text": "3,800円", "confidence": 0.88, "box": [[400, 300], [480, 300], [480, 340], [400, 340]]},
+            {"text": "2026/01/15", "confidence": 0.90, "box": [[50, 50], [200, 50], [200, 80], [50, 80]]},
+        ]
+        raw_path = temp_output_dir / "similarity-test.json"
+        write_json_atomic(raw_path, modified_ocr)
+
+        result = process_input_json(raw_path, model="mock", output_dir=temp_output_dir, db_path=temp_db)
+
+        assert result is not None
+        # テンプレート座標で amount が補正される
+        assert result["amount"] == 3800
+        # clinic 名が正しい "ABCクリニック" に上書きされる
+        assert result["clinic"] == "ABCクリニック"
+        # 元の "BCクリニック" が clinic として新規作成されていないこと
+        clinic = get_clinic_by_name(temp_db, "BCクリニック")
+        assert clinic is None
+
+    def test_hybrid_layout_fallback(
+        self,
+        temp_output_dir: Path,
+        temp_db: Path,
+        seed_abc_clinic_with_template: str,
+    ):
+        """クリニック名が全く異なる → Step3 座標レイアウトでマッチ"""
+        # クリニック名に「医院」を含める（MockLLMClient が clinic として認識するため）
+        # 座標は ABCクリニックのテンプレートと同じレイアウト
+        modified_ocr = [
+            {"text": "山田 太郎", "confidence": 0.95, "box": [[50, 100], [200, 100], [200, 140], [50, 140]]},
+            {"text": "全然違う医院", "confidence": 0.92, "box": [[50, 160], [300, 160], [300, 200], [50, 200]]},
+            {"text": "3,800円", "confidence": 0.88, "box": [[400, 300], [480, 300], [480, 340], [400, 340]]},
+            {"text": "2026/01/15", "confidence": 0.90, "box": [[50, 50], [200, 50], [200, 80], [50, 80]]},
+        ]
+        raw_path = temp_output_dir / "layout-test.json"
+        write_json_atomic(raw_path, modified_ocr)
+
+        result = process_input_json(raw_path, model="mock", output_dir=temp_output_dir, db_path=temp_db)
+
+        assert result is not None
+        # テンプレート座標で amount が補正される
+        assert result["amount"] == 3800
+        # clinic 名が "ABCクリニック" に上書きされる（レイアウトマッチによる）
+        assert result["clinic"] == "ABCクリニック"
+
+    def test_hybrid_all_fallback_no_match(
+        self,
+        temp_output_dir: Path,
+        temp_db: Path,
+    ):
+        """全マッチ失敗 → 従来通り新規クリニックとして処理"""
+        # テンプレートなしのOCRエントリ
+        no_match_ocr = [
+            {"text": "商品名", "confidence": 0.95, "box": [[50, 100], [200, 100], [200, 140], [50, 140]]},
+            {"text": "3,800円", "confidence": 0.88, "box": [[400, 300], [480, 300], [480, 340], [400, 340]]},
+        ]
+        raw_path = temp_output_dir / "no-match.json"
+        write_json_atomic(raw_path, no_match_ocr)
+
+        result = process_input_json(raw_path, model="mock", output_dir=temp_output_dir, db_path=temp_db)
+
+        assert result is not None
+        # clinic は None（OCRにクリニック名がない）
+        assert result["clinic"] is None
+        # エラーが発生しないこと
         assert result["amount"] == 3800

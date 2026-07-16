@@ -56,8 +56,11 @@ python tasks/issue_4/run_e2e.py
 
 ## Current Progress & Upcoming Tasks
 
-### Implemented Features (as of 2026-07-13)
+### Implemented Features (as of 2026-07-16)
 - Complete pipeline integration (OCR + LLM Extraction + Normalization + Automatic Parsing).
+- **Hybrid Template Key Matching (Issue #34)**:
+  - Implemented 3-stage fallback for clinic template matching: (1) Exact Name Match, (2) Text Similarity (difflib, threshold 0.6), (3) Layout-based Matching (50px proximity, 60% match ratio).
+  - This improves robustness against OCR character errors and extraction failures.
 - **Coordinate-based Extraction & Relative Normalization (Issue #32)**:
   - Implemented relative coordinate conversion (`normalize_coordinates`) to handle photography offsets.
   - Increased coordinate proximity threshold from 20px to **50px** for robust matching.
@@ -66,7 +69,7 @@ python tasks/issue_4/run_e2e.py
 - CLI integration for model and input JSON file configuration.
 - Robust date, clinic name, and monetary value normalization.
 - E2E testing framework with mockup validations.
-- **Service Layer Refactoring & SRP**: Decoupled business logic into specialized services and repositories. Introduced `ReceiptUpdater` for centralized orchestration of update operations, further strengthening SRP.
+- **Service Layer Refactoring & SRP**: Decoupled business logic into specialized services and repositories.
 - **Robustness Fixes**: Fixed issues with plain numeric amount parsing, DB/JSON data synchronization (clinic_id updates), and robust template data ingestion. Resilient receipt lookup for database operations.
 
 ### Upcoming Tasks

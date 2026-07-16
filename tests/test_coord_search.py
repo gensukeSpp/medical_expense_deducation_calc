@@ -9,6 +9,8 @@ from app.coord_search import (
     search_by_proximity,
     search_by_proximity_multi,
     search_fields_by_proximity,
+    find_clinic_by_text_similarity,
+    match_template_by_layout,
     _is_multi_box,
     _calculate_box_center,
     _euclidean_distance,
@@ -385,3 +387,133 @@ class TestSearchFieldsByProximity:
         far_box = [[0, 500], [100, 500], [100, 550], [0, 550]]
         results = search_fields_by_proximity(sample_entries, {"far": far_box}, threshold=20.0)
         assert results["far"] is None
+
+
+# ──────────────────────────────────────────
+# find_clinic_by_text_similarity のテスト
+# ──────────────────────────────────────────
+
+
+class TestFindClinicByTextSimilarity:
+    """Test find_clinic_by_text_similarity function."""
+
+    @pytest.fixture
+    def sample_clinics(self):
+        return [
+            {"id": "uuid-1", "name": "ABCクリニック", "created_at": "2026-01-01"},
+            {"id": "uuid-2", "name": "あおばクリニック", "created_at": "2026-01-02"},
+            {"id": "uuid-3", "name": "デンタルクリニック", "created_at": "2026-01-03"},
+        ]
+
+    def test_exact_match(self, sample_clinics):
+        """完全一致するクリニック名がマッチする"""
+        result = find_clinic_by_text_similarity("ABCクリニック", sample_clinics)
+        assert result is not None
+        assert result["id"] == "uuid-1"
+
+    def test_partial_match(self, sample_clinics):
+        """文字欠け（"BC" → "ABC"）でマッチする"""
+        result = find_clinic_by_text_similarity("BCクリニック", sample_clinics)
+        assert result is not None
+        assert result["id"] == "uuid-1"  # ABCクリニック
+
+    def test_no_match(self, sample_clinics):
+        """全く異なる文字列で None を返す"""
+        result = find_clinic_by_text_similarity("全然違う名前", sample_clinics)
+        assert result is None
+
+    def test_empty_query(self, sample_clinics):
+        """空文字列で None を返す"""
+        result = find_clinic_by_text_similarity("", sample_clinics)
+        assert result is None
+
+    def test_empty_clinics(self):
+        """空リストで None を返す"""
+        result = find_clinic_by_text_similarity("ABCクリニック", [])
+        assert result is None
+
+
+# ──────────────────────────────────────────
+# match_template_by_layout のテスト
+# ──────────────────────────────────────────
+
+
+class TestMatchTemplateByLayout:
+    """Test match_template_by_layout function."""
+
+    @pytest.fixture
+    def sample_ocr_layout(self):
+        """OCRエントリ（coord_normalizer で相対化済みを想定）"""
+        return [
+            {"text": "山田 太郎", "confidence": 0.95, "box": [[50, 100], [200, 100], [200, 140], [50, 140]]},
+            {"text": "ABCクリニック", "confidence": 0.92, "box": [[50, 160], [300, 160], [300, 200], [50, 200]]},
+            {"text": "3,800円", "confidence": 0.88, "box": [[400, 300], [480, 300], [480, 340], [400, 340]]},
+            {"text": "2026/01/15", "confidence": 0.90, "box": [[50, 50], [200, 50], [200, 80], [50, 80]]},
+        ]
+
+    @pytest.fixture
+    def layout_templates(self):
+        return [
+            {
+                "id": "tmpl-1",
+                "clinic_id": "uuid-1",
+                "clinic_name": "ABCクリニック",
+                "version": 1,
+                "coords_corrections": {
+                    "name": [[50, 100], [200, 100], [200, 140], [50, 140]],
+                    "clinic": [[50, 160], [300, 160], [300, 200], [50, 200]],
+                    "amount": [[400, 300], [480, 300], [480, 340], [400, 340]],
+                },
+            },
+            {
+                "id": "tmpl-2",
+                "clinic_id": "uuid-2",
+                "clinic_name": "あおばクリニック",
+                "version": 1,
+                "coords_corrections": {
+                    "date": [[50, 50], [200, 50], [200, 80], [50, 80]],
+                },
+            },
+        ]
+
+    def test_all_fields_match(self, sample_ocr_layout, layout_templates):
+        """全フィールド一致でテンプレートが返る"""
+        result = match_template_by_layout(sample_ocr_layout, layout_templates)
+        assert result is not None
+        assert result["clinic_name"] == "ABCクリニック"
+        assert result["id"] == "tmpl-1"
+
+    def test_partial_match_above_threshold(self, sample_ocr_layout, layout_templates):
+        """3フィールド中2フィールドマッチ（66% ≥ 60%）でABCクリニックが返る"""
+        # name の座標を500px離す（マッチしないように）
+        layout_templates[0]["coords_corrections"]["name"] = [[0, 999], [10, 999], [10, 1010], [0, 1010]]
+        # tmpl-2 の date も500px離す（tmpl-2 が 100% マッチするのを防ぐ）
+        layout_templates[1]["coords_corrections"]["date"] = [[0, 999], [10, 999], [10, 1010], [0, 1010]]
+        result = match_template_by_layout(sample_ocr_layout, layout_templates)
+        assert result is not None
+        assert result["clinic_name"] == "ABCクリニック"
+
+    def test_no_match_below_threshold(self, sample_ocr_layout, layout_templates):
+        """3フィールド中1フィールドのみマッチ（33% < 60%）で None"""
+        layout_templates[0]["coords_corrections"]["name"] = [[0, 999], [10, 999], [10, 1010], [0, 1010]]
+        layout_templates[0]["coords_corrections"]["clinic"] = [[0, 999], [10, 999], [10, 1010], [0, 1010]]
+        # tmpl-2 の date も500px離す
+        layout_templates[1]["coords_corrections"]["date"] = [[0, 999], [10, 999], [10, 1010], [0, 1010]]
+        result = match_template_by_layout(sample_ocr_layout, layout_templates)
+        assert result is None
+
+    def test_empty_ocr_entries(self, layout_templates):
+        """OCRエントリが空で None"""
+        result = match_template_by_layout([], layout_templates)
+        assert result is None
+
+    def test_empty_templates(self, sample_ocr_layout):
+        """テンプレートリストが空で None"""
+        result = match_template_by_layout(sample_ocr_layout, [])
+        assert result is None
+
+    def test_template_without_coords(self, sample_ocr_layout):
+        """coords_corrections がないテンプレートはスキップ"""
+        templates = [{"id": "tmpl-3", "clinic_id": "uuid-3", "clinic_name": "test", "version": 1}]
+        result = match_template_by_layout(sample_ocr_layout, templates)
+        assert result is None
