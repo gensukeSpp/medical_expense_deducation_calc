@@ -68,12 +68,13 @@ class PollingMonitor:
             if not self._running:
                 break
 
+            # self.processor.process(p)（ReceiptProcessor._sync_process）の内部でも全く同じ is_file_stable チェックが実行されています。
             # 安定性チェック (FileRepository を使用)
-            is_stable = await loop.run_in_executor(None, self.file_repository.is_file_stable, p)
+            # is_stable = await loop.run_in_executor(None, self.file_repository.is_file_stable, p)
 
-            if not is_stable:
-                LOG.info("File %s is not stable, skipping", p)
-                continue
+            # if not is_stable:
+            #     LOG.info("File %s is not stable, skipping", p)
+            #     continue
 
             LOG.info("New file detected: %s", p)
             # 処理を実行 (非同期)

@@ -23,22 +23,29 @@ def _find_min_coords(ocr_entries: List[Dict[str, Any]]) -> tuple[Optional[int], 
     topmost_y: Optional[float] = None
 
     for entry in ocr_entries:
+        if not isinstance(entry, dict):
+            continue
         box = entry.get("box")
-        if not box or not isinstance(box, list) or len(box) < 4:
+        if not box or not isinstance(box, list):
+            continue
+
+        """
+        無効な形式の座標点（リストやタプルではない、または要素数が2未満のもの）が含まれている場合、\n
+        非辞書型の要素が ocr_entries に混入した場合の防御的プログラミングも考慮し、事前に有効な座標点（valid_points）を抽出して処理する
+        """
+        valid_points = [p for p in box if isinstance(p, (list, tuple)) and len(p) >= 2]
+        if not valid_points:
             continue
 
         # Find this box's min x and min y across all points
-        for point in box:
-            if not isinstance(point, (list, tuple)) or len(point) < 2:
-                continue
-            x, y = point[0], point[1]
+        for x, y in valid_points:
             if min_x is None or x < min_x:
                 min_x = x
             if min_y is None or y < min_y:
                 min_y = y
 
         # Track topmost element's confidence
-        box_min_y = min(p[1] for p in box if isinstance(p, (list, tuple)) and len(p) >= 2)
+        box_min_y = min(p[1] for p in valid_points)
         if topmost_y is None or box_min_y < topmost_y:
             topmost_y = box_min_y
             topmost_confidence = entry.get("confidence")
@@ -48,7 +55,8 @@ def _find_min_coords(ocr_entries: List[Dict[str, Any]]) -> tuple[Optional[int], 
 
 def _subtract_offset(box: List[List[int]], offset_x: int, offset_y: int) -> List[List[int]]:
     """Subtract offset from all points in a box."""
-    return [[p[0] - offset_x, p[1] - offset_y] for p in box]
+    # box 内に無効な座標点（None や空リストなど）が含まれている場合、スキップ
+    return [[p[0] - offset_x, p[1] - offset_y] for p in box if isinstance(p, (list, tuple)) and len(p) >= 2]
 
 
 def normalize_coordinates(raw_data_path: Path) -> Dict[str, Any]:

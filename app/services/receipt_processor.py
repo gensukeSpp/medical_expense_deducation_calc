@@ -45,11 +45,15 @@ class ReceiptProcessor:
         単一の画像を処理する。
         """
         import asyncio
-        from concurrent.futures import ThreadPoolExecutor
+
+        # from concurrent.futures import ThreadPoolExecutor
 
         loop = asyncio.get_running_loop()
-        with ThreadPoolExecutor() as pool:
-            return await loop.run_in_executor(pool, self._sync_process, image_path)
+        # process メソッドが呼び出されるたびに ThreadPoolExecutor を新規作成して破棄しているため、
+        # パフォーマンス低下やリソースの無駄遣いにつながります。
+        # with ThreadPoolExecutor() as pool:
+        #     return await loop.run_in_executor(pool, self._sync_process, image_path)
+        return await loop.run_in_executor(None, self._sync_process, image_path)
 
     def _sync_process(self, image_path: Path) -> bool:
         """

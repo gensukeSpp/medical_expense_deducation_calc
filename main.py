@@ -69,14 +69,16 @@ def main():
     # 単一画像の処理
     from app.processor import process_single_image
 
-    process_single_image(
-        image_name=args.image_name,
-        input_dir=input_dir,
-        output_dir=output_dir,
-        model=args.model,
-        db_path=args.db_path,
-        ocr=ocr,
-    )
+    # args.image_name が存在する場合のみ process_single_image を呼び出す
+    if args.image_name:
+        process_single_image(
+            image_name=args.image_name,
+            input_dir=input_dir,
+            output_dir=output_dir,
+            model=args.model,
+            db_path=args.db_path,
+            ocr=ocr,
+        )
 
     # Web UI サーバー起動
     if args.serve:
