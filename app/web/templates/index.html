@@ -15,7 +15,7 @@
             <tbody>
                 {% for item in items %}
                 <tr>
-                    <td><a href="{{ item.file_stem }}">{{ item.display_name }}</a></td>
+                    <td><a href="{{ item.file_stem }}">{{ item.display_name }}</a>{% if item.low_confidence %}<span style="color: #dc3545; font-size: 12px; margin-left: 8px;">&#9888; 読み取り不十分</span>{% endif %}</td>
                 </tr>
                 {% endfor %}
             </tbody>

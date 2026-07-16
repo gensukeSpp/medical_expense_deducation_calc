@@ -1,74 +1,63 @@
+"""CLI entry point for single-image processing.
+
+This module is the CLI layer for processing a single image.
+It handles:
+- Argument validation (image_name existence, path safety)
+- Error reporting via sys.exit (CLI-appropriate behaviour)
+- Delegation of business logic to ImageProcessingService
+
+It does NOT contain any OCR, normalization, or parsing logic.
+"""
+
+from __future__ import annotations
+
 import sys
 import logging
-from datetime import datetime
-import argparse
 from pathlib import Path
 
 from paddleocr import PaddleOCR
+from app.services.image_processing_service import ImageProcessingService
 
 
-def process_single_image(args: argparse.Namespace, input_dir: Path, output_dir: Path, ocr: PaddleOCR) -> None:
-    """単一の画像をOCR処理し、結果をJSONファイルとして保存する。
+def process_single_image(
+    image_name: str,
+    input_dir: Path,
+    output_dir: Path,
+    model: str,
+    db_path: Path | str | None,
+    ocr: PaddleOCR,
+) -> None:
+    """Validate input and delegate processing to ImageProcessingService.
 
     Args:
-        args (argparse.Namespace): コマンドライン引数。
-        input_dir (Path): 入力画像ディレクトリ。
-        output_dir (Path): 出力JSONディレクトリ。
-        ocr (PaddleOCR): 初期化済みのPaddleOCRインスタンス。
+        image_name: Name of the image file to process.
+        input_dir: Directory containing the input image.
+        output_dir: Directory for output JSON files.
+        model: LLM model name or 'mock' for local heuristic.
+        db_path: Optional SQLite database path.
+        ocr: Initialised PaddleOCR instance.
+
+    Exits with code 1 on validation or processing failure.
     """
-    if args.image_name:
-        image_path = input_dir / args.image_name
-        if not image_path.exists():
-            logging.error("Error: %s not found.", image_path)
+    image_path = input_dir / image_name
+    if not image_path.exists():
+        logging.error("Error: %s not found.", image_path)
+        sys.exit(1)
+
+    # Ensure image_path is inside input_dir
+    try:
+        if not image_path.resolve().is_relative_to(input_dir.resolve()):
+            logging.error("image-name must be inside input-dir: %s", input_dir)
             sys.exit(1)
-        # Ensure image_path is inside input_dir
-        try:
-            if not image_path.resolve().is_relative_to(input_dir.resolve()):
-                logging.error("image-name must be inside input-dir: %s", input_dir)
-                sys.exit(1)
-        except AttributeError:
-            # For older Python versions fallback
-            if input_dir.resolve() not in image_path.resolve().parents and image_path.resolve() != input_dir.resolve():
-                logging.error("image-name must be inside input-dir: %s", input_dir)
-                sys.exit(1)
-
-        try:
-            mtime = int(image_path.stat().st_mtime)
-        except Exception:
-            mtime = int(datetime.now().timestamp())
-        out_fname = f"{image_path.stem}_{mtime}-raw_data.json"
-        output_json_path = output_dir / out_fname
-
-        try:
-            from app.ocr_pipeline import process_image
-
-            structured = process_image(image_path, output_dir=output_dir, output_json_path=output_json_path, ocr=ocr)
-            if structured is None:
-                logging.warning("process_image returned None for %s", image_path)
-            elif isinstance(structured, dict):
-                logging.info("Saved 1 item to %s", output_json_path)
-            else:
-                logging.info("Saved %d items to %s", len(structured), output_json_path)
-
-            # Generate structured data from OCR raw data
-            try:
-                from app.structural_parser import process_input_json
-
-                process_input_json(
-                    output_json_path,
-                    model=args.model,
-                    output_dir=output_dir,
-                    db_path=args.db_path,
-                )
-                logging.info("Structured data generated for %s", output_json_path)
-            except Exception:
-                logging.exception("Failed to generate structured data for %s", output_json_path)
-        except Exception:
-            logging.exception("Processing failed for %s", image_path)
+    except AttributeError:
+        # For older Python versions fallback
+        if input_dir.resolve() not in image_path.resolve().parents and image_path.resolve() != input_dir.resolve():
+            logging.error("image-name must be inside input-dir: %s", input_dir)
             sys.exit(1)
 
-    else:
-        print(
-            "No --image-name provided. Pass an image name to process a single file, or use "
-            "--watch to run the folder watcher."
-        )
+    try:
+        service = ImageProcessingService(ocr_engine=ocr)
+        service.process(image_path, output_dir, model, db_path)
+    except Exception:
+        logging.exception("Processing failed for %s", image_path)
+        sys.exit(1)

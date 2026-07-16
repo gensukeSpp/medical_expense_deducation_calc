@@ -6,20 +6,24 @@ python app/watcher.py --input-dir ~/Downloads/receipts --output-dir output_json 
 Notes:
 - Uses polling by default (no extra deps). If watchdog is installed it will not be required, polling is adequate.
 - Requires PaddleOCR; ensure environment set up via `uv add` as requested.
+
+Refactored structure (SRP):
+- FileRepository: file system operations (stability check, image detection, failed copy, cleanup)
+- ReceiptProcessor: business logic (OCR -> normalization -> structural parsing)
+- PollingMonitor: polling-based file monitoring (future use)
 """
 
 from __future__ import annotations
 
-import argparse
 import logging
-import shutil
 import time
 from pathlib import Path
 from typing import Iterable
 
 from paddleocr import PaddleOCR
-from .ocr_pipeline import process_image
-from .structural_parser import process_input_json
+
+from .services.file_repository import FileRepository
+from .services.receipt_processor import ReceiptProcessor
 
 LOG = logging.getLogger("ocr_watcher")
 
@@ -70,78 +74,24 @@ def process_one(
     model: str = "mock",
     db_path: Path | str | None = None,
 ) -> bool:
-    """Process a single image. Returns True on success, False on failure."""
-    output_dir.mkdir(parents=True, exist_ok=True)
-    processed_dir.mkdir(parents=True, exist_ok=True)
-    failed_dir.mkdir(parents=True, exist_ok=True)
+    """Process a single image. Returns True on success, False on failure.
 
-    # deterministic output name based on file mtime to enable idempotency
-    try:
-        mtime = int(image_path.stat().st_mtime)
-    except Exception:
-        mtime = int(time.time())
-    out_fname = f"{image_path.stem}_{mtime}-raw_data.json"
-    output_json_path = output_dir / out_fname
-
-    # if output already exists, treat as already processed
-    if output_json_path.exists():
-        LOG.info("Output already exists for %s -> %s, skipping", image_path, output_json_path)
-        return True
-
-    # skip files that are still being written
-    if not is_file_stable(image_path):
-        LOG.info("File appears unstable (still being written), skipping for now: %s", image_path)
-        return False
-
-    attempt = 0
-    resized_path = None
-    while attempt <= retries:
-        try:
-            LOG.info("Processing %s (attempt %d)", image_path, attempt + 1)
-            structured = process_image(image_path, output_dir=output_dir, output_json_path=output_json_path, ocr=ocr)
-
-            resized_path = output_dir / f"resized_gray_{image_path.name}"
-
-            LOG.info("Processed %s -> %s (%d items)", image_path, output_json_path, len(structured))
-
-            # Generate structured data from OCR raw data
-            try:
-                process_input_json(
-                    output_json_path,
-                    model=model,
-                    output_dir=output_dir,
-                    db_path=db_path,
-                )
-                LOG.info("Structured data generated for %s", output_json_path)
-            except Exception:
-                LOG.exception("Failed to generate structured data for %s", output_json_path)
-
-            # Cleanup resized image
-            if resized_path and resized_path.exists():
-                resized_path.unlink()
-                LOG.info("Cleaned up resized image: %s", resized_path)
-
-            return True
-        except Exception as e:
-            LOG.exception("Failed processing %s: %s", image_path, e)
-            attempt += 1
-            time.sleep(1)
-
-    # Cleanup resized image on failure
-    if resized_path and resized_path.exists():
-        resized_path.unlink()
-        LOG.info("Cleaned up resized image (on failure): %s", resized_path)
-
-    # All attempts failed; copy to failed_dir
-    try:
-        dest = failed_dir / image_path.name
-        if dest.exists():
-            dest = failed_dir / f"{int(time.time())}_{image_path.name}"
-        shutil.copy2(str(image_path), str(dest))
-        LOG.info("Copied failed %s -> %s", image_path, dest)
-    except Exception:
-        LOG.exception("Failed to copy failed file %s", image_path)
-    return False
+    Legacy wrapper that delegates to ReceiptProcessor.
+    """
+    file_repo = FileRepository(
+        output_dir=output_dir,
+        processed_dir=processed_dir,
+        failed_dir=failed_dir,
+    )
+    processor = ReceiptProcessor(
+        ocr=ocr,
+        file_repository=file_repo,
+        output_dir=output_dir,
+        model=model,
+        db_path=db_path,
+        retries=retries,
+    )
+    return processor._sync_process(image_path)
 
 
 def scan_and_process(

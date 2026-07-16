@@ -20,12 +20,14 @@ Lint:     Black (line-length 119)
 ```
 input image → image_resize (short side = 960px, grayscale)
             → PaddleOCR (lang="japan")
+            → coord_normalizer (絶対座標→相対座標, confidence < 0.8 でスキップ)
             → process_input_json (auto via watcher/processor)
                 → MockLLMClient or LLM extraction (heuristic / structured LLM)
-                → (optional) template proximity search (20px, Mock only)
+                → (optional) template proximity search (50px, Mock only)
                 → normalization (date, amount, clinic name)
             → output *-structured_data.json + SQLite persistence
             → Web UI (confirm/correct via FastAPI + htmx)
+                → low_confidence レシートは一覧に警告表示、修正時テンプレート更新抑止
 ```
 
 ### Progress Check (サブエージェント)
@@ -60,13 +62,14 @@ skill("auto-skill-arch-progress")
 | `app/processor.py` | Single-image processing pipeline orchestrator |
 | `app/db.py` | SQLite CRUD: receipts, corrections, clinic templates |
 | `app/error_logging.py` | Centralized error logging |
-| `app/coord_search.py` | Coordinate search: text similarity + box proximity (20px) |
+| `app/coord_search.py` | Coordinate search: text similarity + box proximity (50px) |
+| `app/coord_normalizer.py` | Coordinate normalization: absolute → relative, confidence gating |
 | `app/template_feedback.py` | User feedback → template learning |
 | `app/prompts.py` | LLM prompt templates |
 | `app/services/receipt_service.py` | Service layer: business logic orchestration |
 | `app/web/server.py` | FastAPI Web UI (review/correct extracted data) |
 | `app/web/templates/` | Jinja2 templates for Web UI |
-| `tests/` | Unit + integration + E2E test suites (11 test files) |
+| `tests/` | Unit + integration + E2E test suites (12 test files) |
 | `tasks/issue_N/` | Issue-specific task plans and E2E runners |
 | `.gemini/agents/` | Subagent definitions (e.g., `implementation_leak_checker.md`) |
 | `.qwen/skills/` | Local Qwen Code skills (e.g., `auto-skill-issue-plan`) |
@@ -167,7 +170,7 @@ Convention: run Black before committing. Config in `pyproject.toml` (line-length
 - Coordinate correction + user feedback loop
 - E2E testing framework
 - **Pipeline integration**: watcher / single-image auto-generates structured data from OCR raw data
-- **Coordinate proximity threshold** (20px): template-based extraction for MockLLMClient
+- **Coordinate proximity threshold** (50px): template-based extraction for MockLLMClient
 - **Coordinate feedback dual-search**: proximity + text search merged for template learning (Bug B fix)
 - **Empty old_value fallback**: coordinate search uses new_value when old_value is empty (Bug A fix)
 - **Sequential correction support**: `add_correction` auto-resolves old_value conflicts (Bug C fix)
@@ -176,6 +179,11 @@ Convention: run Black before committing. Config in `pyproject.toml` (line-length
   - Forward: `_find_multi_boxes_by_substring()` — ライン検出 + サブストリングマッチ + 類似度検証
   - Reverse: `search_fields_by_proximity()` — 各boxの近接検索 → X順連結 → "様"除去
   - 後方互換: 単一box (`List[List[int]]`) とマルチbox (`List[List[List[int]]]`) の自動判別
+- **Coordinate normalization (relative coords)**: OCR 出力後、全 box 座標から最上部(y最小)・最左部(x最小)のオフセットを減算し相対座標に変換。同一クリニック内の撮影ズレを吸収。`app/coord_normalizer.py` 新規。
+  - 最上部要素の confidence < 0.8 の場合は相対化をスキップし、`low_confidence` フラグを structured_data に設定
+  - Web UI 一覧ページで `⚠ 読み取り不十分` 警告表示
+  - low_confidence レシートの修正時は templates テーブル更新を抑止（corrections は通常通り反映）
+- **Proximity threshold 20px → 50px**: サンプル分析に基づき、相対化後の残差(~63px)をカバーするため 50px に引き上げ
 
 ### In Progress / Upcoming
 - Template correction value learning (real-world data)

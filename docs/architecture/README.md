@@ -15,3 +15,4 @@ This directory contains dated snapshots of the project's high-level architecture
 | 2026-07-03 | Architecture snapshot for refactoring and Issue #26 fixes. | [2026-07-03-architecture.md](2026-07-03-architecture.md) |
 | 2026-07-06 | Architecture snapshot for refactoring, repository pattern implementation, and SRP improvements. | [2026-07-06-architecture.md](2026-07-06-architecture.md) |
 | 2026-07-09 | Architecture snapshot for multi-box coordinate matching and service layer enhancements. | [2026-07-09-architecture.md](2026-07-09-architecture.md) |
+| 2026-07-13 | Architecture snapshot for implementing relative coordinate calculation to improve robustness against photography offsets. | [2026-07-13-architecture.md](2026-07-13-architecture.md) |
