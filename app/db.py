@@ -183,6 +183,60 @@ def get_or_create_clinic(db_path: str | Path, name: str) -> str:
         conn.close()
 
 
+def get_all_clinics(db_path: str | Path) -> list[dict[str, Any]]:
+    """Get all clinics from the database.
+
+    Args:
+        db_path: Path to the SQLite database.
+
+    Returns:
+        List of clinic dicts with keys id, name, created_at.
+        Empty list if no clinics exist.
+    """
+    conn = get_db_connection(db_path)
+    try:
+        cursor = conn.execute("SELECT id, name, created_at FROM clinics ORDER BY name")
+        return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_all_templates_with_names(db_path: str | Path) -> list[dict[str, Any]]:
+    """Get all templates with their associated clinic names.
+
+    Only the latest version of each clinic's template is returned.
+    coords_corrections is JSON-decoded.
+
+    Args:
+        db_path: Path to the SQLite database.
+
+    Returns:
+        List of template dicts with keys id, clinic_id, version,
+        coords_corrections, created_at, clinic_name.
+        Empty list if no templates exist.
+    """
+    conn = get_db_connection(db_path)
+    try:
+        cursor = conn.execute("""
+            SELECT t.id, t.clinic_id, t.version, t.coords_corrections,
+                   t.created_at, c.name as clinic_name
+            FROM templates t
+            JOIN clinics c ON t.clinic_id = c.id
+            WHERE t.version = (
+                SELECT MAX(t2.version) FROM templates t2 WHERE t2.clinic_id = t.clinic_id
+            )
+            """)
+        results = []
+        for row in cursor.fetchall():
+            result = dict(row)
+            if result["coords_corrections"]:
+                result["coords_corrections"] = json.loads(result["coords_corrections"])
+            results.append(result)
+        return results
+    finally:
+        conn.close()
+
+
 def upsert_template(
     db_path: str | Path,
     template_id: str,

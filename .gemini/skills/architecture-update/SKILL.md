@@ -10,6 +10,7 @@ This skill automates the process of generating high-level architecture snapshots
 
 1. **Identify Changes:**
    - Determine the base branch (usually `origin/main`).
+   - Analyze the diff to deeply understand the changes and their impact.
    - Identify changed Python files compared to the base branch.
    - List commits between base and current head.
 
@@ -17,7 +18,7 @@ This skill automates the process of generating high-level architecture snapshots
    - Create a new file in `docs/architecture/` with the current date: `YYYY-MM-DD-architecture.md`.
    - Populate with:
      - Purpose (Brief explanation of changes).
-     - Overview (Purpose, key shifts, core components changed).
+     - Overview (Purpose, key shifts, core components changed. For SRP refactoring, limit to one line).
      - Dataflow (If applicable).
      - Key design decisions.
      - Next steps/improvements.

@@ -10,8 +10,19 @@ from app.llm_extractor import get_llm_client
 from app.normalization import normalize_extracted
 from app.output import write_json_atomic
 from app.error_logging import append_error
-from app.db import insert_receipt, get_or_create_clinic, get_latest_template_by_clinic
-from app.coord_search import search_fields_by_proximity
+from app.db import (
+    insert_receipt,
+    get_or_create_clinic,
+    get_clinic_by_name,
+    get_latest_template_by_clinic,
+    get_all_clinics,
+    get_all_templates_with_names,
+)
+from app.coord_search import (
+    search_fields_by_proximity,
+    find_clinic_by_text_similarity,
+    match_template_by_layout,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,26 +56,94 @@ class ExtractionService:
 
         return extracted
 
-    def _apply_template_corrections(self, ocr_json: Dict[str, Any], extracted: Dict[str, Any]) -> Dict[str, Any]:
+    @staticmethod
+    def _get_ocr_entries(ocr_json: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Extract OCR entries from various OCR JSON formats.
+
+        Supports list format (OCR pipeline output) and dict format
+        with 'words' key. Box-less formats (text_lines) are skipped.
+
+        Args:
+            ocr_json: OCR JSON data in list or dict format.
+
+        Returns:
+            List of OCR entry dicts with 'text', 'confidence', 'box' keys.
+            Empty list if no valid entries found.
+        """
+        ocr_entries: List[Dict[str, Any]] = []
+        if isinstance(ocr_json, list):
+            ocr_entries = ocr_json
+        elif isinstance(ocr_json, dict):
+            words = ocr_json.get("words", [])
+            if words:
+                ocr_entries = words
+        return ocr_entries
+
+    def _apply_template_corrections(
+        self,
+        ocr_json: Dict[str, Any],
+        extracted: Dict[str, Any],
+    ) -> Dict[str, Any]:
         if self.db_path is None:
             return extracted
 
         try:
             clinic_name = str(extracted.get("clinic", "")).strip()
-            if clinic_name:
-                clinic_id = get_or_create_clinic(self.db_path, clinic_name)
-                template = get_latest_template_by_clinic(self.db_path, clinic_id)
-                coords = template.get("coords_corrections") if template else None
-                if coords:
-                    ocr_entries: List[Dict[str, Any]] = []
-                    if isinstance(ocr_json, list):
-                        ocr_entries = ocr_json
-                    elif isinstance(ocr_json, dict):
-                        words = ocr_json.get("words", [])
-                        if words:
-                            ocr_entries = words
-                        # text_lines は box なし → 近接検索不可、スキップ
+            if not clinic_name:
+                return extracted
 
+            # Step 1: 完全一致（読み取り専用、作成しない）
+            clinic = get_clinic_by_name(self.db_path, clinic_name)
+            template = None
+            matched_clinic_name: Optional[str] = None
+
+            if clinic:
+                template = get_latest_template_by_clinic(self.db_path, clinic["id"])
+                matched_clinic_name = clinic_name
+
+            # Step 2: テキスト類似度マッチング
+            if not template:
+                try:
+                    clinics = get_all_clinics(self.db_path)
+                    match = find_clinic_by_text_similarity(clinic_name, clinics)
+                    if match:
+                        template = get_latest_template_by_clinic(self.db_path, match["id"])
+                        matched_clinic_name = match["name"]
+                        logger.info(
+                            "Template matched by text similarity: " "'%s' → '%s'",
+                            clinic_name,
+                            matched_clinic_name,
+                        )
+                except Exception as e:
+                    logger.warning("Text similarity matching failed: %s", e)
+
+            # Step 3: 座標レイアウトマッチング
+            if not template:
+                try:
+                    ocr_entries = self._get_ocr_entries(ocr_json)
+                    if ocr_entries:
+                        all_templates = get_all_templates_with_names(self.db_path)
+                        matched = match_template_by_layout(
+                            ocr_entries,
+                            all_templates,
+                            proximity_threshold=DEFAULT_PROXIMITY_THRESHOLD,
+                        )
+                        if matched:
+                            template = matched
+                            matched_clinic_name = matched["clinic_name"]
+                            logger.info(
+                                "Template matched by layout: " "'%s' → '%s'",
+                                clinic_name,
+                                matched_clinic_name,
+                            )
+                except Exception as e:
+                    logger.warning("Layout matching failed: %s", e)
+
+            # テンプレート適用
+            if template and matched_clinic_name:
+                coords = template.get("coords_corrections")
+                if coords:
+                    ocr_entries = self._get_ocr_entries(ocr_json)
                     if ocr_entries:
                         proximity_texts = search_fields_by_proximity(
                             ocr_entries,
@@ -74,8 +153,16 @@ class ExtractionService:
                         for field_name, concat_text in proximity_texts.items():
                             if concat_text and field_name in extracted:
                                 extracted[field_name] = concat_text
+
+                # 正しいクリニック名で上書き（後続の get_or_create_clinic が正しい既存クリニックを参照するため）
+                if matched_clinic_name != clinic_name:
+                    extracted["clinic"] = matched_clinic_name
+            else:
+                # いずれもマッチなし → 新規クリニック作成（従来動作）
+                get_or_create_clinic(self.db_path, clinic_name)
+
         except Exception as e:
-            logger.error(f"Template proximity correction failed: {e}")
+            logger.error("Template proximity correction failed: %s", e)
         return extracted
 
 
