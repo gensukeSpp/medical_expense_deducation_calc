@@ -123,16 +123,19 @@ uv run main.py --watch --use-watchdog --serve --db-path data/db.sqlite3
 
 ### Test
 
+> **Note:** `pytest` 実行前に必ず `source .venv/bin/activate` で仮想環境を有効化すること。
+> 例: `cd /path/to/project && source .venv/bin/activate && pytest -q`
+
 ```bash
 # All tests
-pytest -q
+source .venv/bin/activate && pytest -q
 
 # Single test
-pytest tests/test_file.py::test_name
-pytest -k <expr>
+source .venv/bin/activate && pytest tests/test_file.py::test_name
+source .venv/bin/activate && pytest -k <expr>
 
 # E2E test
-uv run tasks/issue_4/run_e2e.py
+source .venv/bin/activate && uv run tasks/issue_4/run_e2e.py
 ```
 
 ### Lint

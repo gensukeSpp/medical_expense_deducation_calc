@@ -57,6 +57,14 @@ def test_index_lists_structured_files(client):
     assert parse_html_content(response.text, "receipt-002")
 
 
+def test_index_display_name_with_file_stem(client):
+    """一覧表示の display_name に file_stem が含まれる"""
+    response = client.get("/")
+    assert response.status_code == 200
+    # 正常ケース: "あおばクリニック-2026-01-15 [receipt-001]" の形式
+    assert parse_html_content(response.text, "あおばクリニック-2026-01-15 [receipt-001]")
+
+
 def test_index_fallback_display_name(client):
     """clinic が null の場合、ファイル名が表示名として使われる"""
     response = client.get("/")

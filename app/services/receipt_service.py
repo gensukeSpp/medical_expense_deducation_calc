@@ -61,7 +61,7 @@ class ReceiptService:
                 clinic = data.get("clinic")
                 date = data.get("date")
                 if clinic and date:
-                    display_name = f"{clinic}-{date}"
+                    display_name = f"{clinic}-{date} [{file_stem}]"
                 else:
                     display_name = file_stem
                 items.append(
