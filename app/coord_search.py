@@ -349,11 +349,16 @@ def match_template_by_layout(
         if not fields:
             continue
 
+        """
+        いくつかのフィールドが None の場合、それらが分母（len(fields)）に含まれてしまうため、マッチ率（rate）が不当に低くなり、閾値（match_ratio）を満たさずにマッチングが失敗する可能性があります。\n
+        有効な（None ではない）座標ボックスのみを対象に分母を計算するようにしてください。
+        """
+        valid_boxes = [box for box in coords.values() if box is not None]
+        if not valid_boxes:
+            continue
+
         matched_count = 0
-        for field_name in fields:
-            field_box = coords[field_name]
-            if field_box is None:
-                continue
+        for field_box in valid_boxes:
             match = search_by_proximity(ocr_entries, field_box, proximity_threshold)
             if match:
                 matched_count += 1
