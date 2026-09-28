@@ -15,3 +15,6 @@ failed/
 processed/
 data/
 uv.lock
+logs/
+test_*.py
+test*.db
