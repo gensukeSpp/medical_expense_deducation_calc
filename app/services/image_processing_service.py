@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from datetime import datetime
+from typing import Optional
 
 from paddleocr import PaddleOCR
 from app.ocr_pipeline import process_image
@@ -43,6 +44,9 @@ class ImageProcessingService:
         output_dir: Path,
         model: str,
         db_path: Path | str | None = None,
+        processed_dir: Optional[Path] = None,
+        preprocess_mode: str = "none",
+        target_short_side: int = 960,
     ) -> None:
         """Run the full processing pipeline for a single image.
 
@@ -51,6 +55,9 @@ class ImageProcessingService:
             output_dir: Directory for output JSON files.
             model: LLM model name or 'mock' for local heuristic.
             db_path: Optional SQLite database path for persisting results.
+            processed_dir: Directory to save preprocessed images (Issue #36).
+            preprocess_mode: "none" | "clahe" | "adaptive" | "clahe+adaptive".
+            target_short_side: Target short-side size in px for resizing.
         """
         # 1. File metadata
         mtime = self._get_mtime(image_path)
@@ -58,22 +65,89 @@ class ImageProcessingService:
         # 2. Output path determination
         output_json_path = self._make_output_path(image_path, output_dir, mtime)
 
-        # 3. OCR pipeline
+        # 3. OCR pipeline (1回目: 前処理なし) -> raw_data.json
         self._run_ocr(image_path, output_dir, output_json_path)
 
-        # 4. Coordinate normalization
-        low_confidence = self._normalize_coords(output_json_path)
+        # 4. topmost Confidence 判定（原本 raw_data.json に対して）
+        low_confidence, _ = self._get_topmost_confidence(output_json_path)
 
-        # 5. Structural parsing
-        self._parse_structured(output_json_path, model, output_dir, db_path)
+        # 5. 低Confidence なら前処理で再試行（1回）
+        #    原本 raw_data.json は温存し、前処理済み結果を別名(raw_data.preprocessed.json)で保存
+        active_raw_path = output_json_path
+        if low_confidence and processed_dir is not None and preprocess_mode != "none":
+            active_raw_path = self._preprocess_and_retry(
+                image_path, output_dir, output_json_path, processed_dir, preprocess_mode, target_short_side
+            )
+            low_confidence, _ = self._get_topmost_confidence(active_raw_path)
 
-        # 6. Low-confidence flag augmentation
+        # 6. 座標正規化（前処理済み raw があればそれを対象に）
+        low_confidence = self._normalize_coords(active_raw_path) or low_confidence
+
+        # 7. 構造化パース（前処理済み raw があればそれを対象に）
+        self._parse_structured(active_raw_path, model, output_dir, db_path)
+
+        # 8. 低Confidence flag 付与
         if low_confidence:
             self._apply_low_confidence_flag(image_path, output_dir, mtime)
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _get_topmost_confidence(output_json_path: Path) -> tuple[bool, Optional[float]]:
+        """読み取り専用で topmost Confidence を取得する。"""
+        try:
+            from app.coord_normalizer import get_topmost_confidence
+
+            return get_topmost_confidence(output_json_path)
+        except Exception:
+            logger.exception("Failed to check topmost confidence for %s", output_json_path)
+            return True, None
+
+    def _preprocess_and_retry(
+        self,
+        image_path: Path,
+        output_dir: Path,
+        output_json_path: Path,
+        processed_dir: Path,
+        preprocess_mode: str,
+        target_short_side: int,
+    ) -> Path:
+        """前処理を適用した画像で OCR を再実行し、前処理済み raw JSON を別名保存する。
+
+        Note:
+            元の raw_data.json（output_json_path）は上書きせず温存する。
+            前処理済みの結果は、{stem}_raw_data.preprocessed.json に保存する。
+
+        前処理済み画像は processed_dir に保存する（目視検証用）。
+
+        Returns:
+            前処理済み raw_data のパス。後段の正規化・パースはこれを対象にする。
+        """
+        from app.image_preprocessing import build_preprocess_fn
+
+        preprocessed_path = processed_dir / f"preprocessed_{image_path.name}"
+        preprocessed_raw_path = Path(
+            str(output_json_path).replace("-raw_data.json", "-raw_data.preprocessed.json")
+        )
+        preprocess_fn = build_preprocess_fn(preprocess_mode)
+
+        process_image(
+            image_path,
+            output_dir=output_dir,
+            output_json_path=preprocessed_raw_path,
+            ocr=self.ocr_engine,
+            preprocess_fn=preprocess_fn,
+            preprocess_output_path=preprocessed_path,
+            target_short_side=target_short_side,
+        )
+        logger.info(
+            "Preprocessed image saved to %s; preprocessed raw saved to %s",
+            preprocessed_path,
+            preprocessed_raw_path,
+        )
+        return preprocessed_raw_path
 
     @staticmethod
     def _get_mtime(image_path: Path) -> int:

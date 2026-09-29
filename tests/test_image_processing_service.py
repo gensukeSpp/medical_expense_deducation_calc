@@ -215,6 +215,7 @@ class TestProcess:
 
         with (
             patch.object(service, "_run_ocr") as mock_ocr,
+            patch.object(service, "_get_topmost_confidence", return_value=(False, 0.95)) as mock_conf,
             patch.object(service, "_normalize_coords", return_value=False) as mock_norm,
             patch.object(service, "_parse_structured") as mock_parse,
             patch.object(service, "_apply_low_confidence_flag") as mock_aug,
@@ -222,8 +223,9 @@ class TestProcess:
             service.process(image_path, output_dir, model="mock", db_path=None)
 
         mock_ocr.assert_called_once_with(image_path, output_dir, raw_path)
+        mock_conf.assert_called_once_with(raw_path)
         mock_norm.assert_called_once_with(raw_path)
-        mock_parse.assert_called_once_with(raw_path, model="mock", output_dir=output_dir, db_path=None)
+        mock_parse.assert_called_once_with(raw_path, "mock", output_dir, None)
         mock_aug.assert_not_called()
 
     def test_low_confidence_triggers_augmentation(
@@ -234,6 +236,7 @@ class TestProcess:
 
         with (
             patch.object(service, "_run_ocr"),
+            patch.object(service, "_get_topmost_confidence", return_value=(True, 0.5)),
             patch.object(service, "_normalize_coords", return_value=True),
             patch.object(service, "_parse_structured"),
             patch.object(service, "_apply_low_confidence_flag") as mock_aug,
@@ -250,8 +253,80 @@ class TestProcess:
     def test_parse_failure_propagates(self, service: ImageProcessingService, image_path: Path, output_dir: Path):
         with (
             patch.object(service, "_run_ocr"),
+            patch.object(service, "_get_topmost_confidence", return_value=(False, 0.95)),
             patch.object(service, "_normalize_coords", return_value=False),
             patch.object(service, "_parse_structured", side_effect=ValueError("parse failed")),
         ):
             with pytest.raises(ValueError, match="parse failed"):
                 service.process(image_path, output_dir, model="mock", db_path=None)
+
+
+class TestProcessPreprocessRetry:
+    def test_low_confidence_triggers_preprocess_retry_keeps_both_raw(
+        self, service, image_path, output_dir, tmp_path
+    ):
+        mtime = int(image_path.stat().st_mtime)
+        raw_path = output_dir / f"receipt-001_{mtime}-raw_data.json"
+        preprocessed_raw_path = output_dir / f"receipt-001_{mtime}-raw_data.preprocessed.json"
+        processed_dir = tmp_path / "processed"
+        processed_dir.mkdir()
+
+        with (
+            patch.object(service, "_run_ocr") as mock_ocr,
+            patch.object(
+                service,
+                "_get_topmost_confidence",
+                side_effect=[(True, 0.5), (True, 0.7)],  # 1回目→low / 再試行後→まだlow
+            ) as mock_conf,
+            patch.object(service, "_preprocess_and_retry",
+                         return_value=preprocessed_raw_path) as mock_retry,
+            patch.object(service, "_normalize_coords", return_value=False) as mock_norm,
+            patch.object(service, "_parse_structured") as mock_parse,
+            patch.object(service, "_apply_low_confidence_flag") as mock_aug,
+        ):
+            service.process(
+                image_path,
+                output_dir,
+                model="mock",
+                db_path=None,
+                processed_dir=processed_dir,
+                preprocess_mode="clahe+adaptive",
+                target_short_side=960,
+            )
+
+        # 低Confidence → 前処理再試行が呼ばれる（原本 raw_data.json は温存）
+        mock_retry.assert_called_once_with(
+            image_path, output_dir, raw_path, processed_dir, "clahe+adaptive", 960
+        )
+        # 後段の正規化・パースは前処理済み raw を対象にする
+        mock_norm.assert_called_once_with(preprocessed_raw_path)
+        mock_parse.assert_called_once_with(
+            preprocessed_raw_path, "mock", output_dir, None
+        )
+        # 再試行後もまだ低Confidence → flag 付与
+        mock_aug.assert_called_once_with(image_path, output_dir, mtime)
+
+    def test_no_preprocess_when_confident(
+        self, service, image_path, output_dir, tmp_path
+    ):
+        mtime = int(image_path.stat().st_mtime)
+        raw_path = output_dir / f"receipt-001_{mtime}-raw_data.json"
+        processed_dir = tmp_path / "processed"
+        processed_dir.mkdir()
+
+        with (
+            patch.object(service, "_run_ocr"),
+            patch.object(service, "_get_topmost_confidence", return_value=(False, 0.95)),
+            patch.object(service, "_preprocess_and_retry") as mock_retry,
+            patch.object(service, "_normalize_coords", return_value=False) as mock_norm,
+            patch.object(service, "_parse_structured") as mock_parse,
+        ):
+            service.process(
+                image_path, output_dir, model="mock",
+                db_path=None, processed_dir=processed_dir,
+                preprocess_mode="clahe+adaptive", target_short_side=960,
+            )
+
+        mock_retry.assert_not_called()
+        # Confidence が十分な場合は原本 raw をそのまま後段へ
+        mock_norm.assert_called_once_with(raw_path)
