@@ -18,13 +18,14 @@ Phase 1（読み込み、抽出、修正、キャッシュ）のみを実装。�
 │   ├── db.py                  # SQLite ヘルパー (全テーブル CRUD)
 │   ├── db_migrations.py       # スキーママイグレーション
 │   ├── schema.sql             # 最終的な SQL スキーマ (source of truth)
-│   ├── coord_normalizer.py    # 座標正規化 (offset 除去)
+│   ├── coord_normalizer.py    # 座標正規化 (offset 除去) + topmost Confidence 判定
 │   ├── coord_search.py        # 座標ベースのフィールド検索
+│   ├── image_preprocessing.py # OCR 前処理 (CLAHE / 適応的二値化) [Issue #36]
 │   ├── image_resize.py        # OCR 向け画像リサイズ
 │   ├── input.py               # JSON 読み込みヘルパー
 │   ├── llm_extractor.py       # LLM クライアント抽象 + Mock 実装
 │   ├── normalization.py       # 金額/日付の正規化
-│   ├── ocr_pipeline.py        # PaddleOCR エンジン (resize -> predict -> normalize)
+│   ├── ocr_pipeline.py        # PaddleOCR エンジン (resize -> preprocess -> predict -> normalize)
 │   ├── output.py              # Atomic JSON 書き出し
 │   ├── processor.py           # 単一画像処理 (CLI layer)
 │   ├── prompts.py             # LLM プロンプト定義
@@ -122,7 +123,7 @@ DBから過去テンプレート取得 -> 座標補正値適用 ->
 **パス A: 画像 -> 構造データ (CLI / Watcher)**
 ```
 main.py -> processor.py -> ImageProcessingService
-  -> ocr_pipeline.process_image()
+  -> ocr_pipeline.process_image()   # resize -> (前処理) -> predict
   -> coord_normalizer.normalize_coordinates()
   -> structural_parser.process_input_json()
     -> ExtractionService.extract()
@@ -130,6 +131,8 @@ main.py -> processor.py -> ImageProcessingService
     -> ReceiptRepository.save()
     -> OutputWriter.write()
 ```
+
+- 前処理の詳細（適用条件・モード・出力ファイル）は `.hermes/rules/ocr-preprocessing.md` を参照。
 
 **パス B: JSON -> 構造データ (既存 OCR JSON 処理)**
 ```
@@ -149,6 +152,12 @@ main.py -> structural_parser.process_input_json()
 
 ## CLI 使い方
 
+使い方と引数一覧は変更頻度が高いため、`.hermes/rules/cli.md` に分離している。詳細は以下を参照:
+
+- [.hermes/rules/cli.md](./.hermes/rules/cli.md) — コマンド例・引数一覧・デフォルト値
+
+主なコマンド例:
+
 ```bash
 # 単一画像処理
 uv run python main.py --input-dir ~/Downloads/receipts --image-name IMG_001.jpg
@@ -156,36 +165,19 @@ uv run python main.py --input-dir ~/Downloads/receipts --image-name IMG_001.jpg
 # 既存 OCR JSON から構造データ生成
 uv run python main.py --input-json output_json/IMG-raw_data.json --db-path data/db.sqlite3
 
-# フォルダ監視 (polling)
+# フォルダ監視 (polling / watchdog)
 uv run python main.py --watch --input-dir ~/Downloads/receipts --poll-interval 10
-
-# フォルダ監視 (watchdog inotify)
 uv run python main.py --watch --use-watchdog --input-dir ~/Downloads/receipts
+
+# 単一画像処理 + 前処理(低Confidence時に自動適用)
+uv run python main.py --input-dir ~/Downloads/receipts --image-name IMG_001.jpg \
+    --preprocess-mode clahe+adaptive
 
 # Web UI 起動
 uv run python main.py --serve --port 8000 --db-path data/db.sqlite3
 ```
 
-引数一覧:
-
-| 引数              | 説明                                        | デフォルト                  |
-| ----------------- | ------------------------------------------- | --------------------------- |
-| `--input-dir`     | 入力画像ディレクトリ                        | `~/Downloads/receipts`      |
-| `--image-name`    | 単一画像処理 (ファイル名)                   | None                        |
-| `--output-dir`    | JSON 出力先                                 | `output_json`               |
-| `--input-json`    | 既存 OCR JSON 処理                          | None                        |
-| `--model`         | LLM モデル名 or `mock`                      | `mock`                      |
-| `--watch`         | フォルダ監視モード                          | False                       |
-| `--use-watchdog`  | watchdog(inotify) 使用                      | False                       |
-| `--processed-dir` | 処理済み画像先                              | `processed`                 |
-| `--failed-dir`    | 失敗画像先                                  | `failed`                    |
-| `--poll-interval` | ポーリング間隔 (秒)                         | 10                          |
-| `--run-once`      | 1回スキャンして終了                         | False                       |
-| `--retries`       | 失敗時のリトライ回数                        | 1                           |
-| `--db-path`       | SQLite パス                                 | None                        |
-| `--serve`         | Web UI サーバー起動                         | False                       |
-| `--host`          | Web サーバーホスト                          | `127.0.0.1`                 |
-| `--port`          | Web サーバーポート                          | 8000                        |
+※ Issue #36 の前処理オプション `--preprocess-mode` / `--preprocess-force` / `--target-short-side` の詳細は `.hermes/rules/ocr-preprocessing.md` と `.hermes/rules/cli.md` を参照。
 
 ## 開発規約
 
@@ -252,16 +244,27 @@ refactor #<issue>: <description>
 `app/args.py` の `setup_args()` で `CUDA_VISIBLE_DEVICES=-1` を強制。
 GPU なし環境でも動作する前提。
 
-### Low Confidence Flag
+### Low Confidence Flag と OCR 前処理
 
 座標正規化で最上部文字の confidence が 0.8 未満の場合:
 - 正規化をスキップし `low_confidence: True` フラグを structured JSON に付与
 - このフラグがある場合、テンプレート学習をスキップ (`receipt_updater.py` 行 98-108)
+- 低 Confidence 時（または `--preprocess-force` 時）は、前処理 (CLAHE/適応的二値化) で OCR を 1 回再試行する
 
-### 出力ファイル命名
+前処理の詳細（適用条件・モード・パラメータ・実装上注意）は変更頻度が高いため、
+`.hermes/rules/ocr-preprocessing.md` に分離している。詳しくは以下を参照:
+- [.hermes/rules/ocr-preprocessing.md](./.hermes/rules/ocr-preprocessing.md)
 
+## 出力ファイル命名
+
+変更頻度が高く、Issue #36 で前処理済みファイルが追加されたため、
+命名規則は `.hermes/rules/ocr-preprocessing.md` に分離している。
+
+要点:
 - raw JSON: `{image_stem}_{mtime}-raw_data.json`
+- 前処理済み raw JSON: `{image_stem}_{mtime}-raw_data.preprocessed.json`
 - structured JSON: `{image_stem}_{mtime}-structured_data.json`
+- 前処理済み画像: `processed/preprocessed_{画像名}`
 
 ### ファイル安定性チェック
 
@@ -276,3 +279,6 @@ GPU なし環境でも動作する前提。
 - 開発環境: `docs/DEVELOPMENT.md`
 - スキーマ: `docs/schema.sql`
 - アーキテクチャスナップショット: `docs/architecture/` 配下
+- 変更頻度の高いルール (`rules`):
+  - CLI 使い方・引数一覧: `.hermes/rules/cli.md`
+  - OCR 前処理・出力ファイル命名: `.hermes/rules/ocr-preprocessing.md`
