@@ -34,6 +34,8 @@ def main():
                 retries=args.retries,
                 model=args.model,
                 db_path=args.db_path,
+                preprocess_mode=args.preprocess_mode,
+                target_short_side=args.target_short_side,
             )
         else:
             print("Starting watcher (polling mode)...")
@@ -47,6 +49,8 @@ def main():
                 retries=args.retries,
                 model=args.model,
                 db_path=args.db_path,
+                preprocess_mode=args.preprocess_mode,
+                target_short_side=args.target_short_side,
             )
         return
 

@@ -73,6 +73,8 @@ def process_one(
     retries: int = 1,
     model: str = "mock",
     db_path: Path | str | None = None,
+    preprocess_mode: str = "none",
+    target_short_side: int = 960,
 ) -> bool:
     """Process a single image. Returns True on success, False on failure.
 
@@ -90,6 +92,9 @@ def process_one(
         model=model,
         db_path=db_path,
         retries=retries,
+        processed_dir=processed_dir,
+        preprocess_mode=preprocess_mode,
+        target_short_side=target_short_side,
     )
     return processor._sync_process(image_path)
 
@@ -104,6 +109,8 @@ def scan_and_process(
     retries: int = 1,
     model: str = "mock",
     db_path: Path | str | None = None,
+    preprocess_mode: str = "none",
+    target_short_side: int = 960,
 ) -> int:
     """Scan input_dir and process found images. Returns number of processed files."""
     input_dir.mkdir(parents=True, exist_ok=True)
@@ -123,6 +130,8 @@ def scan_and_process(
                 retries=retries,
                 model=model,
                 db_path=db_path,
+                preprocess_mode=preprocess_mode,
+                target_short_side=target_short_side,
             )
             if success:
                 processed += 1
@@ -141,6 +150,8 @@ def run_loop(
     retries: int = 1,
     model: str = "mock",
     db_path: Path | str | None = None,
+    preprocess_mode: str = "none",
+    target_short_side: int = 960,
 ):
     LOG.info("Starting watcher: input=%s output=%s processed=%s", input_dir, output_dir, processed_dir)
 
@@ -157,6 +168,8 @@ def run_loop(
                 retries=retries,
                 model=model,
                 db_path=db_path,
+                preprocess_mode=preprocess_mode,
+                target_short_side=target_short_side,
             )
             if n > 0:
                 LOG.info("Processed %d files this cycle", n)
@@ -179,6 +192,8 @@ def run_watchdog(
     retries: int = 1,
     model: str = "mock",
     db_path: Path | str | None = None,
+    preprocess_mode: str = "none",
+    target_short_side: int = 960,
 ):
     """Run an inotify-style watcher using watchdog. Falls back to polling if watchdog isn't available."""
     try:
@@ -197,6 +212,8 @@ def run_watchdog(
             retries=retries,
             model=model,
             db_path=db_path,
+            preprocess_mode=preprocess_mode,
+            target_short_side=target_short_side,
         )
         return
 
@@ -226,6 +243,8 @@ def run_watchdog(
                                 retries=retries,
                                 model=model,
                                 db_path=db_path,
+                                preprocess_mode=preprocess_mode,
+                                target_short_side=target_short_side,
                             )
 
                         t = threading.Thread(target=_delayed, daemon=True)
@@ -274,6 +293,8 @@ if __name__ == "__main__":
                 retries=args.retries,
                 model=args.model,
                 db_path=args.db_path,
+                preprocess_mode=args.preprocess_mode,
+                target_short_side=args.target_short_side,
             )
         except Exception:
             LOG.exception("Watchdog failed, falling back to polling loop")
@@ -287,6 +308,8 @@ if __name__ == "__main__":
                 retries=args.retries,
                 model=args.model,
                 db_path=args.db_path,
+                preprocess_mode=args.preprocess_mode,
+                target_short_side=args.target_short_side,
             )
     else:
         run_loop(
@@ -299,4 +322,6 @@ if __name__ == "__main__":
             retries=args.retries,
             model=args.model,
             db_path=args.db_path,
+            preprocess_mode=args.preprocess_mode,
+            target_short_side=args.target_short_side,
         )
