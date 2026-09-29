@@ -86,15 +86,19 @@ def process_image(
     if resized_path is None:
         return []
 
+    # resized_gray_* を読み込む (カラー3ch。OCR predictor はチャネル数=3を要求)
     img = cv2.imread(str(resized_path))
 
     # Issue #36: 前処理の適用と、処理後画像の保存
+    #   前処理(CLAHE/二値化)は単チャネルが必須。前処理後は OCR に渡すため 3ch へ戻す
     if preprocess_fn is not None:
-        img = preprocess_fn(img)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        processed_gray = preprocess_fn(gray)
         if preprocess_output_path is not None:
             preprocess_output_path = Path(preprocess_output_path)
             preprocess_output_path.parent.mkdir(parents=True, exist_ok=True)
-            cv2.imwrite(str(preprocess_output_path), img)
+            cv2.imwrite(str(preprocess_output_path), processed_gray)
+        img = cv2.cvtColor(processed_gray, cv2.COLOR_GRAY2BGR)
 
     if ocr is None:
         raise ValueError("An initialized PaddleOCR instance must be provided as `ocr`")

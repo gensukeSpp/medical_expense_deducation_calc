@@ -42,6 +42,8 @@ class TestProcessImagePreprocess:
 
         assert structured and structured[0]["text"] == "top"
         assert preprocessed_out.exists()
-        # predict に渡された画像は前処理済みであるべき
+        # predict に渡された画像は前処理済み(3ch へ戻された)であるべき
         passed_img = ocr.predict.call_args[0][0]
-        assert set(np.unique(passed_img)).issubset({0, 255})
+        assert passed_img.shape[2] == 3  # OCR 入力は BGR 3 チャネル
+        gray_passed = cv2.cvtColor(passed_img, cv2.COLOR_BGR2GRAY)
+        assert set(np.unique(gray_passed)).issubset({0, 255})
