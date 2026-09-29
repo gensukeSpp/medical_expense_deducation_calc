@@ -128,9 +128,7 @@ class ImageProcessingService:
         from app.image_preprocessing import build_preprocess_fn
 
         preprocessed_path = processed_dir / f"preprocessed_{image_path.name}"
-        preprocessed_raw_path = Path(
-            str(output_json_path).replace("-raw_data.json", "-raw_data.preprocessed.json")
-        )
+        preprocessed_raw_path = Path(str(output_json_path).replace("-raw_data.json", "-raw_data.preprocessed.json"))
         preprocess_fn = build_preprocess_fn(preprocess_mode)
 
         process_image(
