@@ -48,6 +48,11 @@ def setup_args(argv: Iterable[str] | None = None):
         help="低Confidence時に適用する前処理 (Issue #36)。default: none",
     )
     parser.add_argument(
+        "--preprocess-force",
+        action="store_true",
+        help="Confidence に関係なく前処理を強制適用する (Issue #36)。--preprocess-mode が none 以外の時のみ有効",
+    )
+    parser.add_argument(
         "--target-short-side",
         type=int,
         default=960,

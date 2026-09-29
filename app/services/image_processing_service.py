@@ -46,6 +46,7 @@ class ImageProcessingService:
         db_path: Path | str | None = None,
         processed_dir: Optional[Path] = None,
         preprocess_mode: str = "none",
+        preprocess_force: bool = False,
         target_short_side: int = 960,
     ) -> None:
         """Run the full processing pipeline for a single image.
@@ -57,6 +58,8 @@ class ImageProcessingService:
             db_path: Optional SQLite database path for persisting results.
             processed_dir: Directory to save preprocessed images (Issue #36).
             preprocess_mode: "none" | "clahe" | "adaptive" | "clahe+adaptive".
+            preprocess_force: Apply preprocessing even when confidence is not low
+                (Issue #36 validation).
             target_short_side: Target short-side size in px for resizing.
         """
         # 1. File metadata
@@ -71,10 +74,12 @@ class ImageProcessingService:
         # 4. topmost Confidence 判定（原本 raw_data.json に対して）
         low_confidence, _ = self._get_topmost_confidence(output_json_path)
 
-        # 5. 低Confidence なら前処理で再試行（1回）
+        # 5. 前処理で再試行（1回）
         #    原本 raw_data.json は温存し、前処理済み結果を別名(raw_data.preprocessed.json)で保存
+        #    低Confidence時だけでなく --preprocess-force 指定時も適用する
         active_raw_path = output_json_path
-        if low_confidence and processed_dir is not None and preprocess_mode != "none":
+        should_preprocess = processed_dir is not None and preprocess_mode != "none"
+        if should_preprocess and (low_confidence or preprocess_force):
             active_raw_path = self._preprocess_and_retry(
                 image_path, output_dir, output_json_path, processed_dir, preprocess_mode, target_short_side
             )

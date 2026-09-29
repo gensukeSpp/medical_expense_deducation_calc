@@ -84,6 +84,7 @@ def main():
             db_path=args.db_path,
             ocr=ocr,
             preprocess_mode=args.preprocess_mode,
+            preprocess_force=args.preprocess_force,
             target_short_side=args.target_short_side,
         )
 
