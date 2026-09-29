@@ -41,6 +41,18 @@ def setup_args(argv: Iterable[str] | None = None):
     parser.add_argument("--serve", action="store_true", help="Start Web UI server")
     parser.add_argument("--host", default="127.0.0.1", help="Web server host")
     parser.add_argument("--port", type=int, default=8000, help="Web server port")
+    parser.add_argument(
+        "--preprocess-mode",
+        default="none",
+        choices=["none", "clahe", "adaptive", "clahe+adaptive"],
+        help="低Confidence時に適用する前処理 (Issue #36)。default: none",
+    )
+    parser.add_argument(
+        "--target-short-side",
+        type=int,
+        default=960,
+        help="リサイズ時、短辺の目標サイズ(px)。default: 960",
+    )
     args = parser.parse_args()
 
     return args
