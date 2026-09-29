@@ -138,3 +138,27 @@ def normalize_coordinates(raw_data_path: Path) -> Dict[str, Any]:
         "offset_x": min_x,
         "offset_y": min_y,
     }
+
+
+def get_topmost_confidence(raw_data_path: Path, threshold: float = 0.8) -> tuple[bool, Optional[float]]:
+    """読み取り専用で topmost 要素の Confidence がしきい値未満かを判定する。
+
+    Note:
+        normalize_coordinates と異なり、box 座標の書き換えは行わない。
+        前処理再試行の判定（Issue #36）で使用する。
+
+    Args:
+        raw_data_path: raw_data.json のパス。
+        threshold: 未満なら低 Confidence とみなすしきい値。
+
+    Returns:
+        (low_confidence, topmost_confidence) のタプル。
+    """
+    import json
+
+    with open(raw_data_path, encoding="utf-8") as f:
+        ocr_entries = json.load(f)
+
+    _, _, topmost_confidence = _find_min_coords(ocr_entries)
+    low_confidence = topmost_confidence is None or topmost_confidence < threshold
+    return low_confidence, topmost_confidence
