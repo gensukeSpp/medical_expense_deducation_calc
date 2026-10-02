@@ -34,6 +34,9 @@ def main():
                 retries=args.retries,
                 model=args.model,
                 db_path=args.db_path,
+                preprocess_mode=args.preprocess_mode,
+                preprocess_force=args.preprocess_force,
+                target_short_side=args.target_short_side,
             )
         else:
             print("Starting watcher (polling mode)...")
@@ -47,6 +50,9 @@ def main():
                 retries=args.retries,
                 model=args.model,
                 db_path=args.db_path,
+                preprocess_mode=args.preprocess_mode,
+                preprocess_force=args.preprocess_force,
+                target_short_side=args.target_short_side,
             )
         return
 
@@ -75,9 +81,13 @@ def main():
             image_name=args.image_name,
             input_dir=input_dir,
             output_dir=output_dir,
+            processed_dir=processed_dir,
             model=args.model,
             db_path=args.db_path,
             ocr=ocr,
+            preprocess_mode=args.preprocess_mode,
+            preprocess_force=args.preprocess_force,
+            target_short_side=args.target_short_side,
         )
 
     # Web UI サーバー起動

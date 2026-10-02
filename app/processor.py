@@ -23,9 +23,13 @@ def process_single_image(
     image_name: str,
     input_dir: Path,
     output_dir: Path,
+    processed_dir: Path,
     model: str,
     db_path: Path | str | None,
     ocr: PaddleOCR,
+    preprocess_mode: str = "none",
+    preprocess_force: bool = False,
+    target_short_side: int = 960,
 ) -> None:
     """Validate input and delegate processing to ImageProcessingService.
 
@@ -33,9 +37,13 @@ def process_single_image(
         image_name: Name of the image file to process.
         input_dir: Directory containing the input image.
         output_dir: Directory for output JSON files.
+        processed_dir: Directory to save preprocessed images (Issue #36).
         model: LLM model name or 'mock' for local heuristic.
         db_path: Optional SQLite database path.
         ocr: Initialised PaddleOCR instance.
+        preprocess_mode: Low-confidence preprocessing mode (Issue #36).
+        preprocess_force: Apply preprocessing regardless of confidence (Issue #36).
+        target_short_side: Target short-side size in px for resizing.
 
     Exits with code 1 on validation or processing failure.
     """
@@ -57,7 +65,16 @@ def process_single_image(
 
     try:
         service = ImageProcessingService(ocr_engine=ocr)
-        service.process(image_path, output_dir, model, db_path)
+        service.process(
+            image_path,
+            output_dir,
+            model,
+            db_path,
+            processed_dir=processed_dir,
+            preprocess_mode=preprocess_mode,
+            preprocess_force=preprocess_force,
+            target_short_side=target_short_side,
+        )
     except Exception:
         logging.exception("Processing failed for %s", image_path)
         sys.exit(1)

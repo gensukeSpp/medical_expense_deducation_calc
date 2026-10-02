@@ -4,8 +4,10 @@ from pathlib import Path
 import threading
 import time
 import json
+import sys
+from unittest.mock import patch
 
-from app.watcher import scan_and_process
+from app.watcher import run_loop, run_watchdog, scan_and_process
 
 
 class FakeOCR:
@@ -165,3 +167,53 @@ def test_scan_and_process_skips_when_output_exists(tmp_path):
     assert not (processed_dir / "already.jpg").exists()
     assert (input_dir / "already.jpg").exists()
     assert (out_path).exists()
+
+
+def test_scan_and_process_forces_preprocessing_for_confident_receipt(tmp_path):
+    input_dir = tmp_path / "input-force"
+    output_dir = tmp_path / "output-force"
+    processed_dir = tmp_path / "processed-force"
+    failed_dir = tmp_path / "failed-force"
+    input_dir.mkdir()
+
+    img_path = input_dir / "confident.jpg"
+    assert cv2.imwrite(str(img_path), np.full((64, 64, 3), 120, dtype=np.uint8))
+
+    count = scan_and_process(
+        input_dir=input_dir,
+        ocr=FakeOCR(),
+        output_dir=output_dir,
+        processed_dir=processed_dir,
+        failed_dir=failed_dir,
+        retries=0,
+        preprocess_mode="clahe",
+        preprocess_force=True,
+        target_short_side=64,
+    )
+
+    assert count == 1
+    assert (output_dir / f"confident_{int(img_path.stat().st_mtime)}-raw_data.preprocessed.json").exists()
+    assert (processed_dir / "preprocessed_confident.jpg").exists()
+    assert len(list(output_dir.glob("*-structured_data.json"))) == 1
+
+
+def test_run_loop_forwards_preprocess_force(tmp_path):
+    args = [tmp_path / name for name in ("input", "output", "processed", "failed")]
+    with (
+        patch("app.watcher.PaddleOCR"),
+        patch("app.watcher.scan_and_process", return_value=0) as scan,
+    ):
+        run_loop(*args, run_once=True, preprocess_force=True)
+
+    assert scan.call_args.kwargs["preprocess_force"] is True
+
+
+def test_run_watchdog_fallback_forwards_preprocess_force(tmp_path):
+    args = [tmp_path / name for name in ("input", "output", "processed", "failed")]
+    with (
+        patch.dict(sys.modules, {"watchdog": None, "watchdog.observers": None, "watchdog.events": None}),
+        patch("app.watcher.run_loop") as run,
+    ):
+        run_watchdog(*args, preprocess_force=True)
+
+    assert run.call_args.kwargs["preprocess_force"] is True

@@ -185,3 +185,46 @@ class TestNormalizeCoordinates:
         updated = json.load(open(raw_path, encoding="utf-8"))
         assert updated[0]["extra"] == "keep"
         assert updated[0]["text"] == "A"
+
+
+from app.coord_normalizer import get_topmost_confidence
+
+
+class TestGetTopmostConfidence:
+    def test_returns_low_when_below_threshold(self, tmp_path):
+        raw = tmp_path / "raw.json"
+        raw.write_text(
+            json.dumps(
+                [
+                    {"text": "top", "confidence": 0.5,
+                     "box": [[0, 0], [10, 0], [10, 5], [0, 5]]},
+                    {"text": "below", "confidence": 0.9,
+                     "box": [[0, 20], [30, 20], [30, 25], [0, 25]]},
+                ]
+            ),
+            encoding="utf-8",
+        )
+        low, conf = get_topmost_confidence(raw)
+        assert low is True
+        assert conf == 0.5
+
+    def test_returns_not_low_when_above_threshold(self, tmp_path):
+        raw = tmp_path / "raw.json"
+        raw.write_text(
+            json.dumps(
+                [
+                    {"text": "top", "confidence": 0.95,
+                     "box": [[0, 0], [10, 0], [10, 5], [0, 5]]},
+                ]
+            ),
+            encoding="utf-8",
+        )
+        low, conf = get_topmost_confidence(raw)
+        assert low is False
+        assert conf == 0.95
+
+    def test_none_confidence_is_low(self, tmp_path):
+        raw = tmp_path / "raw.json"
+        raw.write_text(json.dumps([{"text": "x", "confidence": None, "box": [[0, 0]]}]), encoding="utf-8")
+        low, conf = get_topmost_confidence(raw)
+        assert low is True

@@ -204,24 +204,15 @@ class OutputWriter:
     """Responsible for writing structured data to files."""
 
     def write(self, output_dir: Path, input_path: Path, structured: Dict[str, Any]) -> None:
-        # Before: f"{input_path.stem}-structured_data.json"
-        # Since input_path here is likely the path to the raw_data.json file,
-        # its stem is already `{original_name}_{mtime}-raw_data`.
-        # The user wants `*-structured_data.json`.
-        # Let's extract the original base name.
-
-        # Example input_path: .../IMG_..._12345-raw_data.json
-        # Desired output: IMG_..._12345-structured_data.json
-
         raw_stem = input_path.stem
-        # Remove '-raw_data' if present
-        if raw_stem.endswith("-raw_data"):
+        if raw_stem.endswith("-raw_data.preprocessed"):
+            base_name = raw_stem[: -len("-raw_data.preprocessed")]
+        elif raw_stem.endswith("-raw_data"):
             base_name = raw_stem[: -len("-raw_data")]
         else:
             base_name = raw_stem
 
-        out_name = f"{base_name}-structured_data.json"
-        out_path = output_dir / out_name
+        out_path = output_dir / f"{base_name}-structured_data.json"
         write_json_atomic(out_path, structured)
 
 

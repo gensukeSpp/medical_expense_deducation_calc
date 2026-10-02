@@ -32,6 +32,10 @@ class ReceiptProcessor:
         model: str = "mock",
         db_path: Path | str | None = None,
         retries: int = 1,
+        processed_dir: Path | None = None,
+        preprocess_mode: str = "none",
+        target_short_side: int = 960,
+        preprocess_force: bool = False,
     ):
         self.ocr = ocr
         self.file_repository = file_repository
@@ -39,6 +43,10 @@ class ReceiptProcessor:
         self.model = model
         self.db_path = db_path
         self.retries = retries
+        self.processed_dir = processed_dir
+        self.preprocess_mode = preprocess_mode
+        self.preprocess_force = preprocess_force
+        self.target_short_side = target_short_side
 
     async def process(self, image_path: Path) -> bool:
         """
@@ -54,6 +62,52 @@ class ReceiptProcessor:
         # with ThreadPoolExecutor() as pool:
         #     return await loop.run_in_executor(pool, self._sync_process, image_path)
         return await loop.run_in_executor(None, self._sync_process, image_path)
+
+    def _preprocess_and_retry(
+        self,
+        image_path: Path,
+        output_dir: Path,
+        output_json_path: Path,
+        mtime: int,
+    ) -> Path:
+        """前処理を適用した画像で OCR を再実行し、前処理済み raw JSON を別名保存する。
+
+        Note:
+            元の raw_data.json（output_json_path）は上書きせず温存する。
+            前処理済みの結果は、{stem}_{mtime}-raw_data.preprocessed.json に保存する。
+
+        前処理済み画像は processed_dir に保存する（目視検証用）。
+
+        Returns:
+            前処理済み raw_data のパス。
+        """
+        from app.image_preprocessing import build_preprocess_fn
+        from app.ocr_pipeline import process_image
+
+        processed_dir = self.processed_dir
+        preprocessed_image_path = (
+            processed_dir / f"preprocessed_{image_path.name}"
+            if processed_dir
+            else output_dir / f"preprocessed_{image_path.name}"
+        )
+        preprocessed_raw_path = output_dir / f"{image_path.stem}_{mtime}-raw_data.preprocessed.json"
+        preprocess_fn = build_preprocess_fn(self.preprocess_mode)
+
+        process_image(
+            image_path,
+            output_dir=output_dir,
+            output_json_path=preprocessed_raw_path,
+            ocr=self.ocr,
+            preprocess_fn=preprocess_fn,
+            preprocess_output_path=preprocessed_image_path,
+            target_short_side=self.target_short_side,
+        )
+        LOG.info(
+            "Preprocessed image saved to %s; preprocessed raw saved to %s",
+            preprocessed_image_path,
+            preprocessed_raw_path,
+        )
+        return preprocessed_raw_path
 
     def _sync_process(self, image_path: Path) -> bool:
         """
@@ -82,6 +136,11 @@ class ReceiptProcessor:
             LOG.info("File appears unstable (still being written), skipping for now: %s", image_path)
             return False
 
+        if self.preprocess_mode != "none":
+            from app.image_preprocessing import build_preprocess_fn
+
+            build_preprocess_fn(self.preprocess_mode)
+
         attempt = 0
         resized_path = None
         while attempt <= self.retries:
@@ -92,6 +151,7 @@ class ReceiptProcessor:
                     output_dir=output_dir,
                     output_json_path=output_json_path,
                     ocr=self.ocr,
+                    target_short_side=self.target_short_side,
                 )
 
                 resized_path = output_dir / f"resized_gray_{image_path.name}"
@@ -100,6 +160,7 @@ class ReceiptProcessor:
 
                 # Coordinate normalization: convert absolute coords to relative
                 low_confidence = False
+                active_raw_path = output_json_path
                 try:
                     from app.coord_normalizer import normalize_coordinates
 
@@ -121,17 +182,34 @@ class ReceiptProcessor:
                 except Exception:
                     LOG.exception("Coordinate normalization failed for %s", output_json_path)
 
+                # Issue #36: 低Confidence時のみ前処理で再試行（1回）
+                # 原本 raw_data.json は温存し、前処理済み結果は -raw_data.preprocessed.json に別名保存
+                if (
+                    (low_confidence or self.preprocess_force)
+                    and self.processed_dir is not None
+                    and self.preprocess_mode != "none"
+                ):
+                    active_raw_path = self._preprocess_and_retry(image_path, output_dir, output_json_path, mtime)
+                    low_confidence = False
+                    try:
+                        from app.coord_normalizer import normalize_coordinates
+
+                        norm_result = normalize_coordinates(active_raw_path)
+                        low_confidence = norm_result.get("low_confidence", False)
+                    except Exception:
+                        LOG.exception("Coordinate normalization failed for %s", active_raw_path)
+
                 # Generate structured data from OCR raw data
                 try:
                     process_input_json(
-                        output_json_path,
+                        active_raw_path,
                         model=self.model,
                         output_dir=output_dir,
                         db_path=self.db_path,
                     )
-                    LOG.info("Structured data generated for %s", output_json_path)
+                    LOG.info("Structured data generated for %s", active_raw_path)
                 except Exception:
-                    LOG.exception("Failed to generate structured data for %s", output_json_path)
+                    LOG.exception("Failed to generate structured data for %s", active_raw_path)
 
                 # Set low_confidence flag in structured data if needed
                 if low_confidence:

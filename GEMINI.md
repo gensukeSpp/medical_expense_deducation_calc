@@ -22,6 +22,8 @@ The primary goal is to simplify data entry for medical expenses within a househo
 - `main.py`: Main entry point integrating the directory watcher, OCR pipeline, and LLM processing.
 - `app/`: Contains core application logic.
     - `app/ocr_pipeline.py`: Logic for PaddleOCR-based text and coordinate extraction.
+    - `app/image_preprocessing.py`: Image preprocessing utilities (CLAHE, adaptive thresholding).
+    - `app/coord_normalizer.py`: Coordinate normalization and topmost confidence checking (`get_topmost_confidence`).
     - `app/image_resize.py`: Image pre-processing utilities (resizing, scaling).
     - `app/watcher.py`: Directory watcher tracking incoming receipts and triggering processing.
     - `app/llm_extractor.py`: Handles interfacing with the LLM API for extraction.
@@ -56,8 +58,12 @@ python tasks/issue_4/run_e2e.py
 
 ## Current Progress & Upcoming Tasks
 
-### Implemented Features (as of 2026-07-16)
+### Implemented Features (as of 2026-10-02)
 - Complete pipeline integration (OCR + LLM Extraction + Normalization + Automatic Parsing).
+- **OCR Preprocessing & Retry (Issue #36)**:
+  - Added image preprocessing utilities (CLAHE local contrast enhancement and adaptive thresholding in `app/image_preprocessing.py`).
+  - Implemented configurable preprocessing modes (`--preprocess-mode`: `clahe`, `adaptive`, `clahe+adaptive`), force execution (`--preprocess-force`), and target short-side sizing (`--target-short-side`).
+  - Added low-confidence conditional retry with preprocessed image generation (`processed/`) and raw JSON preservation (`*raw_data.preprocessed.json`).
 - **Hybrid Template Key Matching (Issue #34)**:
   - Implemented 3-stage fallback for clinic template matching: (1) Exact Name Match, (2) Text Similarity (difflib, threshold 0.6), (3) Layout-based Matching (50px proximity, 60% match ratio).
   - This improves robustness against OCR character errors and extraction failures.
