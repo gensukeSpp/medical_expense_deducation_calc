@@ -121,3 +121,29 @@
   - CLAHE の `clipLimit` / `tileGridSize` と adaptiveThreshold の `blockSize` / `C` の最適値 → デフォルトを Issue 例（2.0 / (8,8) / 11 / 2）で据え、検証結果で調整。
   - 対策4（モデル切替）は本 Issue スコープ外として別 Issue で扱うか。
   - デフォルト `--target-short-side` を 960 のままにするか 1200 に上げるか → 検証後に判断。
+
+  ## PR #37 レビュー対応計画（2026-10-02）
+
+  ### 目的
+
+  PR #37 レビューで見つかった再試行フローの不整合を解消し、CLI・watcher・直接サービス利用で前処理設定が一貫して動作するようにする。既存の原本 raw JSON と前処理済み raw JSON を両方残す設計は維持する。
+
+  ### 対応方針
+
+  1. `OutputWriter` が `-raw_data.preprocessed.json` も認識し、通常 raw と前処理済み raw のどちらから構造化しても同じ `{stem}_{mtime}-structured_data.json` に出力する。
+  2. `target_short_side` を初回 OCR にも渡す。再試行時だけでなく、通常 OCR と初回 Confidence 判定も指定サイズで実行する。
+  3. `preprocess_force` を `main.py` から polling / watchdog、各 watcher 呼び出し、`ReceiptProcessor` まで伝播し、高 Confidence でも指定モードで再試行する。
+  4. `build_preprocess_fn()` は明示された4モード（`none` / `clahe` / `adaptive` / `clahe+adaptive`）以外を `ValueError` とする。CLI choices による検証に加え、直接サービス/API利用時も不正値を黙認しない。
+
+  ### スコープ外
+
+  - PRスコープ分割の提案は、現在の作業ツリーにある既存の文書・指示ファイル変更を改変せず、この修正では扱わない。
+  - OCRアルゴリズム、前処理パラメーター、ユーザー画像を用いた目視品質評価は変更しない。
+
+  ### 検証方針
+
+  - 前処理済み raw 由来でも通常 raw と同じ構造化出力名になることをテストする。
+  - `target_short_side` が通常 OCR の `process_image()` に渡ることをサービス単体・watcher側で確認する。
+  - force が polling と watchdog の委譲先まで伝播し、高 Confidence 入力にも前処理を適用することをテストする。
+  - 既知4モードの既存動作を維持し、未知モードで `ValueError` となることをテストする。
+  - 変更箇所に対応する pytest を実行し、関連ファイルを Black で確認する。

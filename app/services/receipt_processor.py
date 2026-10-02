@@ -35,6 +35,7 @@ class ReceiptProcessor:
         processed_dir: Path | None = None,
         preprocess_mode: str = "none",
         target_short_side: int = 960,
+        preprocess_force: bool = False,
     ):
         self.ocr = ocr
         self.file_repository = file_repository
@@ -44,6 +45,7 @@ class ReceiptProcessor:
         self.retries = retries
         self.processed_dir = processed_dir
         self.preprocess_mode = preprocess_mode
+        self.preprocess_force = preprocess_force
         self.target_short_side = target_short_side
 
     async def process(self, image_path: Path) -> bool:
@@ -134,6 +136,11 @@ class ReceiptProcessor:
             LOG.info("File appears unstable (still being written), skipping for now: %s", image_path)
             return False
 
+        if self.preprocess_mode != "none":
+            from app.image_preprocessing import build_preprocess_fn
+
+            build_preprocess_fn(self.preprocess_mode)
+
         attempt = 0
         resized_path = None
         while attempt <= self.retries:
@@ -144,6 +151,7 @@ class ReceiptProcessor:
                     output_dir=output_dir,
                     output_json_path=output_json_path,
                     ocr=self.ocr,
+                    target_short_side=self.target_short_side,
                 )
 
                 resized_path = output_dir / f"resized_gray_{image_path.name}"
@@ -176,7 +184,11 @@ class ReceiptProcessor:
 
                 # Issue #36: 低Confidence時のみ前処理で再試行（1回）
                 # 原本 raw_data.json は温存し、前処理済み結果は -raw_data.preprocessed.json に別名保存
-                if low_confidence and self.processed_dir is not None and self.preprocess_mode != "none":
+                if (
+                    (low_confidence or self.preprocess_force)
+                    and self.processed_dir is not None
+                    and self.preprocess_mode != "none"
+                ):
                     active_raw_path = self._preprocess_and_retry(image_path, output_dir, output_json_path, mtime)
                     low_confidence = False
                     try:

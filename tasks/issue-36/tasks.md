@@ -885,3 +885,45 @@ uv run python main.py --input-dir ~/Downloads/receipts --image-name <低Confiden
 | `app/args.py` | 5 | 修正（追加） |
 | `app/processor.py`, `main.py` | 6 | 修正 |
 | `app/services/receipt_processor.py`, `app/watcher.py` | 7 | 修正 |
+
+---
+
+## PR #37 レビュー対応タスク（2026-10-02）
+
+関連計画: [plan.md — PR #37 レビュー対応計画](./plan.md#pr-37-レビュー対応計画2026-10-02)
+
+### Task 9: 前処理済み raw の構造化出力名を統一する
+
+- [x] `OutputWriter.write()` が `-raw_data` と `-raw_data.preprocessed` の両方をベース名から除外する。
+- [x] 通常 raw / 前処理済み raw が同一の `{stem}_{mtime}-structured_data.json` を生成するテストを追加する。
+
+### Task 10: 初回 OCR に resize 指定を適用する
+
+- [x] `ImageProcessingService` の初回 `_run_ocr()` に `target_short_side` を伝播する。
+- [x] `ReceiptProcessor` の初回 `process_image()` に `target_short_side` を伝播する。
+- [x] 両経路で設定値が初回 OCR に渡るテストを追加または更新する。
+
+### Task 11: watcher 全経路へ force を伝播する
+
+- [x] `main.py` から polling / watchdog 起動関数へ `preprocess_force` を渡す。
+- [x] `run_loop`、`run_watchdog`、watchdog fallback、`scan_and_process`、`process_one` を通して force を伝播する。
+- [x] `ReceiptProcessor` の同期処理で高 Confidence でも force 指定時に前処理再試行する。
+- [x] polling / watchdog の呼び出し伝播、および高 Confidence での再試行をテストする。
+
+### Task 12: 未知の前処理モードを拒否する
+
+- [x] `build_preprocess_fn()` が対応済みモード以外に `ValueError` を送出する。
+- [x] 既知モードの既存テストと未知モードの拒否テストを実行する。
+
+### Task 13: レビュー対応の検証
+
+- [x] 対応する出力、サービス、watcher、前処理モジュールの pytest を実行する。
+- [x] 変更した Python ファイルを Black で確認する。
+- [x] 実行結果を以下の記録欄に追記する。
+
+#### レビュー対応の実装・検証記録
+
+| 日時 | 内容 | 結果 |
+|------|------|------|
+| 2026-10-02 | PR #37 指摘4項目の修正・回帰テスト | 55 passed / 1 deselected。`test_calls_process_image_and_logs` は既知の caplog INFO 捕捉失敗 |
+| 2026-10-02 | Black (`--target-version py311 --check`) / `git diff --check` | 成功 |

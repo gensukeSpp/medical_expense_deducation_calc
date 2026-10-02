@@ -17,3 +17,4 @@ This directory contains dated snapshots of the project's high-level architecture
 | 2026-07-09 | Architecture snapshot for multi-box coordinate matching and service layer enhancements. | [2026-07-09-architecture.md](2026-07-09-architecture.md) |
 | 2026-07-13 | Architecture snapshot for implementing relative coordinate calculation to improve robustness against photography offsets. | [2026-07-13-architecture.md](2026-07-13-architecture.md) |
 | 2026-07-16 | Architecture snapshot for implementing hybrid template matching for robust OCR data extraction (Issue #34). | [2026-07-16-architecture.md](2026-07-16-architecture.md) |
+| 2026-10-02 | Architecture snapshot for OCR preprocessing, CLAHE, adaptive thresholding, and retry logic (Issue #36 / PR #37). | [2026-10-02-architecture.md](2026-10-02-architecture.md) |

@@ -87,6 +87,7 @@ class TestRunOcr:
                 output_dir=output_dir,
                 output_json_path=output_json_path,
                 ocr=service.ocr_engine,
+                target_short_side=960,
             )
         assert "Saved 1 item to" in caplog.text
 
@@ -208,6 +209,20 @@ class TestApplyLowConfidenceFlag:
 
 
 class TestProcess:
+    def test_rejects_unknown_preprocess_mode(
+        self, service: ImageProcessingService, image_path: Path, output_dir: Path
+    ):
+        with patch.object(service, "_run_ocr") as mock_ocr:
+            with pytest.raises(ValueError, match="Unknown preprocessing mode"):
+                service.process(
+                    image_path,
+                    output_dir,
+                    model="mock",
+                    preprocess_mode="unknown",
+                )
+
+        mock_ocr.assert_not_called()
+
     def test_happy_path(self, service: ImageProcessingService, image_path: Path, output_dir: Path):
         mtime = int(image_path.stat().st_mtime)
         raw_path = output_dir / f"receipt-001_{mtime}-raw_data.json"
@@ -222,7 +237,7 @@ class TestProcess:
         ):
             service.process(image_path, output_dir, model="mock", db_path=None)
 
-        mock_ocr.assert_called_once_with(image_path, output_dir, raw_path)
+        mock_ocr.assert_called_once_with(image_path, output_dir, raw_path, 960)
         mock_conf.assert_called_once_with(raw_path)
         mock_norm.assert_called_once_with(raw_path)
         mock_parse.assert_called_once_with(raw_path, "mock", output_dir, None)
@@ -235,7 +250,7 @@ class TestProcess:
         raw_path = output_dir / f"receipt-001_{mtime}-raw_data.json"
 
         with (
-            patch.object(service, "_run_ocr"),
+            patch.object(service, "_run_ocr") as mock_ocr,
             patch.object(service, "_get_topmost_confidence", return_value=(True, 0.5)),
             patch.object(service, "_normalize_coords", return_value=True),
             patch.object(service, "_parse_structured"),
@@ -288,11 +303,12 @@ class TestProcessPreprocessRetry:
                 db_path=None,
                 processed_dir=processed_dir,
                 preprocess_mode="clahe+adaptive",
-                target_short_side=960,
+                target_short_side=1200,
             )
 
         # 低Confidence → 前処理再試行が呼ばれる（原本 raw_data.json は温存）
-        mock_retry.assert_called_once_with(image_path, output_dir, raw_path, processed_dir, "clahe+adaptive", 960)
+        mock_ocr.assert_called_once_with(image_path, output_dir, raw_path, 1200)
+        mock_retry.assert_called_once_with(image_path, output_dir, raw_path, processed_dir, "clahe+adaptive", 1200)
         # 後段の正規化・パースは前処理済み raw を対象にする
         mock_norm.assert_called_once_with(preprocessed_raw_path)
         mock_parse.assert_called_once_with(preprocessed_raw_path, "mock", output_dir, None)

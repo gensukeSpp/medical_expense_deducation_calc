@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from app.image_preprocessing import apply_clahe, apply_adaptive_threshold, build_preprocess_fn
 
@@ -54,3 +55,7 @@ class TestBuildPreprocessFn:
         assert callable(fn)
         out = fn(_gray_img())
         assert set(np.unique(out)).issubset({0, 255})
+
+    def test_unknown_mode_raises_value_error(self):
+        with pytest.raises(ValueError, match="Unknown preprocessing mode"):
+            build_preprocess_fn("unknown")

@@ -94,13 +94,51 @@ class TestSyncProcess:
         image_path: Path,
     ):
         mock_process_image.return_value = [{"text": "test", "confidence": 0.95}]
+        processor.target_short_side = 1200
         # Ensure output dir exists
         processor.output_dir.mkdir(parents=True, exist_ok=True)
 
         result = processor._sync_process(image_path)
 
         assert result is True
-        mock_process_image.assert_called_once()
+        mock_process_image.assert_called_once_with(
+            image_path,
+            output_dir=processor.output_dir,
+            output_json_path=processor.output_dir
+            / f"{image_path.stem}_{int(image_path.stat().st_mtime)}-raw_data.json",
+            ocr=processor.ocr,
+            target_short_side=1200,
+        )
+        mock_process_input_json.assert_called_once()
+
+    @patch(
+        "app.coord_normalizer.normalize_coordinates",
+        return_value={"normalized": False, "low_confidence": False, "topmost_confidence": 0.95},
+    )
+    @patch("app.ocr_pipeline.process_image", return_value=[])
+    @patch("app.structural_parser.process_input_json")
+    def test_preprocess_force_retries_even_when_confident(
+        self,
+        mock_process_input_json,
+        mock_process_image,
+        mock_normalize_coordinates,
+        processor: ReceiptProcessor,
+        image_path: Path,
+    ):
+        processor.processed_dir = processor.file_repository.processed_dir
+        processor.preprocess_mode = "clahe"
+        processor.preprocess_force = True
+        processor.target_short_side = 1200
+        processor.output_dir.mkdir(parents=True, exist_ok=True)
+
+        result = processor._sync_process(image_path)
+
+        assert result is True
+        assert mock_process_image.call_count == 2
+        assert mock_process_image.call_args_list[0].kwargs["target_short_side"] == 1200
+        assert mock_process_image.call_args_list[1].kwargs["target_short_side"] == 1200
+        assert mock_process_image.call_args_list[1].kwargs["preprocess_fn"] is not None
+        assert mock_normalize_coordinates.call_count == 2
         mock_process_input_json.assert_called_once()
 
     @patch("app.ocr_pipeline.process_image")

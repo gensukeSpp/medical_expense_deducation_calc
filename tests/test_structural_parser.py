@@ -11,7 +11,7 @@ import pytest
 from app.db import upsert_clinic, upsert_template, get_clinic_by_name, get_all_clinics, get_all_templates_with_names
 from app.db_migrations import run_migrations
 from app.output import write_json_atomic
-from app.structural_parser import process_input_json, DEFAULT_PROXIMITY_THRESHOLD
+from app.structural_parser import OutputWriter, process_input_json, DEFAULT_PROXIMITY_THRESHOLD
 
 SCHEMA_PATH = Path("docs/schema.sql")
 
@@ -79,6 +79,21 @@ class TestProcessInputJson:
         with open(structured_path, encoding="utf-8") as f:
             data = json.load(f)
         assert data["clinic"] == "あおばクリニック"
+
+
+class TestOutputWriter:
+    def test_preprocessed_raw_uses_same_structured_output_name(self, temp_output_dir: Path):
+        writer = OutputWriter()
+        base = "receipt-001_12345"
+        regular_raw = temp_output_dir / f"{base}-raw_data.json"
+        preprocessed_raw = temp_output_dir / f"{base}-raw_data.preprocessed.json"
+
+        writer.write(temp_output_dir, regular_raw, {"source": "regular"})
+        writer.write(temp_output_dir, preprocessed_raw, {"source": "preprocessed"})
+
+        outputs = list(temp_output_dir.glob("*-structured_data.json"))
+        assert outputs == [temp_output_dir / f"{base}-structured_data.json"]
+        assert json.loads(outputs[0].read_text(encoding="utf-8")) == {"source": "preprocessed"}
 
     def test_template_based_extraction_override(
         self,

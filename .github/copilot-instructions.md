@@ -1,6 +1,6 @@
 # Copilot instructions for medical-exp-deducation-calc
 
-This repository processes medical receipts with OCR, LLM structuring, normalization, and a small FastAPI review UI. Most work centers on the receipt pipeline and the SQLite-backed template correction loop.
+This repo implements an OCR-driven workflow for medical receipts used in tax deduction workflows. The core logic is not a generic Python app: it is a receipt-processing pipeline that combines PaddleOCR, structured extraction, normalization, SQLite persistence, and a human review loop.
 
 ## Build, test, and lint
 
@@ -50,21 +50,21 @@ black path/to/file.py
 black --check .
 ```
 
-Project defaults from `pyproject.toml`: `black` is configured with `line-length = 119`.
+Project defaults from `pyproject.toml`: Black is configured with `line-length = 119`.
 
 ## High-level architecture
 
-The app is a pipeline for OCR + human review of medical receipts:
+The system is organized as a pipeline rather than a monolith:
 
-- `main.py` is the entrypoint: CLI args, watcher start, single-image processing, and FastAPI launch.
-- `app/args.py` centralizes CLI configuration and sets `CUDA_VISIBLE_DEVICES=-1` by default to keep execution CPU-first unless explicitly overridden.
-- `app/image_resize.py` resizes and grayscale-converts receipt images before OCR.
-- `app/ocr_pipeline.py` runs PaddleOCR to extract text and bounding boxes.
-- `app/llm_extractor.py` and `app/structural_parser.py` convert OCR text into a structured receipt model; the repo supports mock/local extraction as well as LLM-backed flows.
-- `app/normalization.py` standardizes dates, amounts, and clinic names (including Japanese-era and kanji-based values).
-- `app/services/` contains the orchestration layer for receipt processing, template matching, and database persistence.
-- `app/db.py` and `docs/schema.sql` store receipts, clinic templates, coordinate corrections, and user feedback in SQLite.
-- `app/web/server.py` provides a FastAPI UI for reviewing and correcting extracted data.
+- `main.py` is the entrypoint for CLI, directory watching, single-image processing, and the FastAPI review UI.
+- `app/args.py` centralizes CLI config and defaults to `CUDA_VISIBLE_DEVICES=-1` so OCR runs CPU-first unless explicitly overridden.
+- `app/image_resize.py` and `app/ocr_pipeline.py` handle image resizing/grayscale and PaddleOCR text/box extraction.
+- `app/coord_normalizer.py` converts absolute OCR coordinates into relative coordinates to account for photography offsets and uses confidence gating (`low_confidence` when the top element is below 0.8).
+- `app/llm_extractor.py` plus `app/structural_parser.py` convert OCR output into a structured receipt model and apply clinic/template corrections.
+- `app/normalization.py` canonicalizes dates, amounts, and clinic names (including Japanese-era and kanji-based values).
+- `app/services/` contains the orchestration layer for receipt processing, template matching, and DB-backed business logic.
+- `app/db.py` and `docs/schema.sql` are the persistence boundary for receipts, clinic templates, coordinate corrections, and user feedback.
+- `app/web/server.py` exposes the review UI where users verify/correct extraction results.
 
 The practical flow is:
 
@@ -72,25 +72,32 @@ The practical flow is:
 receipt image
   -> resize/grayscale
   -> PaddleOCR text + coordinates
-  -> LLM/mock structuring
-  -> normalization + template matching
+  -> coordinate normalization + low_confidence gating
+  -> LLM/mock structuring + template matching
+  -> normalization (date/amount/clinic)
   -> JSON output + SQLite persistence
   -> review UI for human corrections
   -> template learning for future receipts
 ```
 
-This repository intentionally keeps OCR, normalization, persistence, and UI logic separate; changes should respect that layering.
+Two processing paths matter in practice:
+
+1. Image -> structured JSON: `main.py -> processor.py -> OCR pipeline -> extraction -> normalization -> save`
+2. Existing OCR JSON -> structured data: `main.py -> structural_parser.process_input_json()`
+
+Preserve that layering when changing code: OCR, normalization, persistence, and review UI each have distinct responsibilities.
 
 ## Key conventions
 
-- Prefer the service/repository boundary already in `app/services/` and `app/db.py` instead of embedding DB logic in UI or parser code.
+- Prefer the service/repository boundary already in `app/services/` and `app/db.py` instead of embedding DB logic in the web UI or parser layer.
 - Keep CLI behavior centralized in `app/args.py`; when adding options, follow the existing `--watch`, `--input-json`, `--serve`, and `--db-path` patterns.
-- Database writes are optional: if `--db-path` is provided, schema migration is expected (`python -m app.db_migrations init --db-path data/db.sqlite3`).
-- Template matching is proximity-first and coordinate-aware; this repo has a documented multi-box handling pattern for split OCR fields and uses relative coordinate normalization to reduce photography offsets.
-- `low_confidence` receipts are treated specially: the system should avoid template updates for low-confidence corrections while still recording corrections.
-- Keep formatting consistent with Black and existing imports in order: stdlib -> third-party -> local.
-- Prefer targeted validation with `pytest tests/...` or `pytest -k <pattern>` before broader runs.
+- `docs/schema.sql` is the source of truth for SQLite structure; if `--db-path` is used, initialize the schema with `python -m app.db_migrations init --db-path data/db.sqlite3`.
+- Template matching is proximity-first and coordinate-aware. The repo uses hybrid matching: exact clinic name match, then text similarity, then layout-based matching (50px proximity / 60% field match).
+- `low_confidence` receipts are special: they still record corrections, but template updates are skipped for those records to avoid poisoning the learning loop.
+- Keep formatting consistent with existing imports and Black style: stdlib -> third-party -> local; line length is 119.
+- Prefer targeted validation (`pytest tests/...` or `pytest -k <pattern>`) before broader runs; this repo is test-friendly but not heavy on full-suite execution.
 
-## Notes from project docs
+## Project-specific notes
 
-`README.md`, `QWEN.md`, and `GEMINI.md` all reflect the same architecture and usage patterns: this is an OCR-first medical receipt workflow with SQLite-backed persistence and a human review loop.
+- `README.md`, `AGENTS.md`, `GEMINI.md`, and `QWEN.md` all describe the same core design: OCR-first receipt processing with SQLite-backed persistence and a human review loop.
+- The app intentionally learns from user correction history to improve clinic-specific templates over time; changes around correction feedback, coordinate matching, and low-confidence handling should be treated as sensitive behavior.

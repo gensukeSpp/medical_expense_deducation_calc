@@ -35,6 +35,7 @@ def main():
                 model=args.model,
                 db_path=args.db_path,
                 preprocess_mode=args.preprocess_mode,
+                preprocess_force=args.preprocess_force,
                 target_short_side=args.target_short_side,
             )
         else:
@@ -50,6 +51,7 @@ def main():
                 model=args.model,
                 db_path=args.db_path,
                 preprocess_mode=args.preprocess_mode,
+                preprocess_force=args.preprocess_force,
                 target_short_side=args.target_short_side,
             )
         return

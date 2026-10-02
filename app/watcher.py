@@ -75,6 +75,7 @@ def process_one(
     db_path: Path | str | None = None,
     preprocess_mode: str = "none",
     target_short_side: int = 960,
+    preprocess_force: bool = False,
 ) -> bool:
     """Process a single image. Returns True on success, False on failure.
 
@@ -94,6 +95,7 @@ def process_one(
         retries=retries,
         processed_dir=processed_dir,
         preprocess_mode=preprocess_mode,
+        preprocess_force=preprocess_force,
         target_short_side=target_short_side,
     )
     return processor._sync_process(image_path)
@@ -111,6 +113,7 @@ def scan_and_process(
     db_path: Path | str | None = None,
     preprocess_mode: str = "none",
     target_short_side: int = 960,
+    preprocess_force: bool = False,
 ) -> int:
     """Scan input_dir and process found images. Returns number of processed files."""
     input_dir.mkdir(parents=True, exist_ok=True)
@@ -131,6 +134,7 @@ def scan_and_process(
                 model=model,
                 db_path=db_path,
                 preprocess_mode=preprocess_mode,
+                preprocess_force=preprocess_force,
                 target_short_side=target_short_side,
             )
             if success:
@@ -152,6 +156,7 @@ def run_loop(
     db_path: Path | str | None = None,
     preprocess_mode: str = "none",
     target_short_side: int = 960,
+    preprocess_force: bool = False,
 ):
     LOG.info("Starting watcher: input=%s output=%s processed=%s", input_dir, output_dir, processed_dir)
 
@@ -169,6 +174,7 @@ def run_loop(
                 model=model,
                 db_path=db_path,
                 preprocess_mode=preprocess_mode,
+                preprocess_force=preprocess_force,
                 target_short_side=target_short_side,
             )
             if n > 0:
@@ -194,6 +200,7 @@ def run_watchdog(
     db_path: Path | str | None = None,
     preprocess_mode: str = "none",
     target_short_side: int = 960,
+    preprocess_force: bool = False,
 ):
     """Run an inotify-style watcher using watchdog. Falls back to polling if watchdog isn't available."""
     try:
@@ -213,6 +220,7 @@ def run_watchdog(
             model=model,
             db_path=db_path,
             preprocess_mode=preprocess_mode,
+            preprocess_force=preprocess_force,
             target_short_side=target_short_side,
         )
         return
@@ -244,6 +252,7 @@ def run_watchdog(
                                 model=model,
                                 db_path=db_path,
                                 preprocess_mode=preprocess_mode,
+                                preprocess_force=preprocess_force,
                                 target_short_side=target_short_side,
                             )
 
@@ -294,6 +303,7 @@ if __name__ == "__main__":
                 model=args.model,
                 db_path=args.db_path,
                 preprocess_mode=args.preprocess_mode,
+                preprocess_force=args.preprocess_force,
                 target_short_side=args.target_short_side,
             )
         except Exception:
@@ -309,6 +319,7 @@ if __name__ == "__main__":
                 model=args.model,
                 db_path=args.db_path,
                 preprocess_mode=args.preprocess_mode,
+                preprocess_force=args.preprocess_force,
                 target_short_side=args.target_short_side,
             )
     else:
@@ -323,5 +334,6 @@ if __name__ == "__main__":
             model=args.model,
             db_path=args.db_path,
             preprocess_mode=args.preprocess_mode,
+            preprocess_force=args.preprocess_force,
             target_short_side=args.target_short_side,
         )

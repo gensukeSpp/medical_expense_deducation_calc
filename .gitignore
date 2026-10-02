@@ -18,3 +18,7 @@ uv.lock
 logs/
 test_*.py
 test*.db
+
+# Added by code-review-graph
+.code-review-graph/
+.better-code-review-graph/

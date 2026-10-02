@@ -58,25 +58,20 @@ class ImageProcessingService:
             db_path: Optional SQLite database path for persisting results.
             processed_dir: Directory to save preprocessed images (Issue #36).
             preprocess_mode: "none" | "clahe" | "adaptive" | "clahe+adaptive".
-            preprocess_force: Apply preprocessing even when confidence is not low
-                (Issue #36 validation).
+            preprocess_force: Apply preprocessing even when confidence is not low.
             target_short_side: Target short-side size in px for resizing.
         """
-        # 1. File metadata
-        mtime = self._get_mtime(image_path)
+        if preprocess_mode != "none":
+            from app.image_preprocessing import build_preprocess_fn
 
-        # 2. Output path determination
+            build_preprocess_fn(preprocess_mode)
+
+        mtime = self._get_mtime(image_path)
         output_json_path = self._make_output_path(image_path, output_dir, mtime)
 
-        # 3. OCR pipeline (1回目: 前処理なし) -> raw_data.json
-        self._run_ocr(image_path, output_dir, output_json_path)
-
-        # 4. topmost Confidence 判定（原本 raw_data.json に対して）
+        self._run_ocr(image_path, output_dir, output_json_path, target_short_side)
         low_confidence, _ = self._get_topmost_confidence(output_json_path)
 
-        # 5. 前処理で再試行（1回）
-        #    原本 raw_data.json は温存し、前処理済み結果を別名(raw_data.preprocessed.json)で保存
-        #    低Confidence時だけでなく --preprocess-force 指定時も適用する
         active_raw_path = output_json_path
         should_preprocess = processed_dir is not None and preprocess_mode != "none"
         if should_preprocess and (low_confidence or preprocess_force):
@@ -85,13 +80,9 @@ class ImageProcessingService:
             )
             low_confidence, _ = self._get_topmost_confidence(active_raw_path)
 
-        # 6. 座標正規化（前処理済み raw があればそれを対象に）
         low_confidence = self._normalize_coords(active_raw_path) or low_confidence
-
-        # 7. 構造化パース（前処理済み raw があればそれを対象に）
         self._parse_structured(active_raw_path, model, output_dir, db_path)
 
-        # 8. 低Confidence flag 付与
         if low_confidence:
             self._apply_low_confidence_flag(image_path, output_dir, mtime)
 
@@ -164,13 +155,16 @@ class ImageProcessingService:
         out_fname = f"{image_path.stem}_{mtime}-raw_data.json"
         return output_dir / out_fname
 
-    def _run_ocr(self, image_path: Path, output_dir: Path, output_json_path: Path) -> None:
+    def _run_ocr(
+        self, image_path: Path, output_dir: Path, output_json_path: Path, target_short_side: int = 960
+    ) -> None:
         try:
             structured = process_image(
                 image_path,
                 output_dir=output_dir,
                 output_json_path=output_json_path,
                 ocr=self.ocr_engine,
+                target_short_side=target_short_side,
             )
             if structured is None:
                 logger.warning("process_image returned None for %s", image_path)

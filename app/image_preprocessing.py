@@ -52,6 +52,9 @@ def build_preprocess_fn(mode: str) -> Optional[Callable[[np.ndarray], np.ndarray
 
     Returns:
         前処理関数（None の場合は前処理を適用しない）。
+
+    Raises:
+        ValueError: 未知の前処理モードが指定された場合。
     """
     if mode == "none":
         return None
@@ -59,8 +62,10 @@ def build_preprocess_fn(mode: str) -> Optional[Callable[[np.ndarray], np.ndarray
         return lambda img: apply_clahe(img)
     if mode == "adaptive":
         return lambda img: apply_adaptive_threshold(img)
+    if mode == "clahe+adaptive":
 
-    def combined(img: np.ndarray) -> np.ndarray:
-        return apply_adaptive_threshold(apply_clahe(img))
+        def combined(img: np.ndarray) -> np.ndarray:
+            return apply_adaptive_threshold(apply_clahe(img))
 
-    return combined
+        return combined
+    raise ValueError(f"Unknown preprocessing mode: {mode}")
