@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from datetime import datetime
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from paddleocr import PaddleOCR
 from app.ocr_pipeline import process_image
@@ -81,7 +81,16 @@ class ImageProcessingService:
             low_confidence, _ = self._get_topmost_confidence(active_raw_path)
 
         low_confidence = self._normalize_coords(active_raw_path) or low_confidence
-        self._parse_structured(active_raw_path, model, output_dir, db_path)
+        structured = self._parse_structured(active_raw_path, model, output_dir, db_path)
+
+        # Issue #39: 学習済み date テンプレートがあれば、raw を date 基準へ再正規化し、
+        # DB に保存済みの ocr_json を新基準へ更新する（受け入れ条件 6 の座標系同期）。
+        # ※ 構造化出力の値はテキスト抽出に由来し座標基準に依存しないため、再解析は行わない
+        #   （process_input_json が毎回 insert するため二重登録を避けるためでもある）。
+        if structured and db_path and not low_confidence:
+            from app.date_anchor import apply_date_anchor_normalization
+
+            apply_date_anchor_normalization(active_raw_path, structured, db_path)
 
         if low_confidence:
             self._apply_low_confidence_flag(image_path, output_dir, mtime)
@@ -208,15 +217,16 @@ class ImageProcessingService:
         model: str,
         output_dir: Path,
         db_path: Path | str | None,
-    ) -> None:
+    ) -> Optional[Dict[str, Any]]:
         try:
-            process_input_json(
+            result = process_input_json(
                 output_json_path,
                 model=model,
                 output_dir=output_dir,
                 db_path=db_path,
             )
             logger.info("Structured data generated for %s", output_json_path)
+            return result
         except Exception:
             logger.exception("Failed to generate structured data for %s", output_json_path)
             raise

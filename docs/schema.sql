@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS templates (
     clinic_id TEXT NOT NULL,
     version INTEGER NOT NULL,
     coords_corrections TEXT,
+    coord_basis TEXT NOT NULL DEFAULT 'topmost',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (clinic_id) REFERENCES clinics(id) ON DELETE CASCADE
 );

@@ -10,6 +10,21 @@ DEFAULT_DB_PATH = "data/db.sqlite3"
 DEFAULT_SCHEMA_PATH = "docs/schema.sql"
 
 
+def _add_coord_basis_column_if_missing(conn) -> None:
+    """Idempotently add the templates.coord_basis column on pre-existing databases.
+
+    ``CREATE TABLE IF NOT EXISTS`` does not alter existing tables, so databases
+    created before Issue #39 must be migrated with an explicit ALTER TABLE.
+    Running this more than once is a no-op.
+
+    Args:
+        conn: Open sqlite3 connection (with foreign keys enabled).
+    """
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(templates)")}
+    if "coord_basis" not in cols:
+        conn.execute("ALTER TABLE templates ADD COLUMN coord_basis TEXT NOT NULL DEFAULT 'topmost'")
+
+
 def run_migrations(db_path: str | Path, schema_path: str | Path) -> None:
     """Read the SQL schema file and initialize the database.
 
@@ -31,6 +46,14 @@ def run_migrations(db_path: str | Path, schema_path: str | Path) -> None:
     conn = get_db_connection(db_path)
     try:
         conn.executescript(schema_sql)
+    finally:
+        conn.close()
+
+    # Issue #39: migrate pre-existing databases that lack coord_basis.
+    conn = get_db_connection(db_path)
+    try:
+        with conn:
+            _add_coord_basis_column_if_missing(conn)
     finally:
         conn.close()
     print("Database initialization complete.")

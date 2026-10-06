@@ -162,3 +162,99 @@ def get_topmost_confidence(raw_data_path: Path, threshold: float = 0.8) -> tuple
     _, _, topmost_confidence = _find_min_coords(ocr_entries)
     low_confidence = topmost_confidence is None or topmost_confidence < threshold
     return low_confidence, topmost_confidence
+
+
+def normalize_coordinates_by_anchor(raw_data_path: Path, anchor_box: List[List[int]]) -> Dict[str, Any]:
+    """Normalize all OCR coordinates relative to a given anchor box's top-left.
+
+    Unlike normalize_coordinates(), which uses the global topmost/leftmost point,
+    this uses the top-left (min x, min y) of ``anchor_box`` as the origin. This is
+    used by date-based normalization (Issue #39): when a reliable date anchor box
+    is found, all boxes are shifted so the date box's top-left becomes (0, 0).
+
+    Args:
+        raw_data_path: Path to the raw_data.json file.
+        anchor_box: The 4-point polygon whose top-left becomes the new origin.
+
+    Returns:
+        Dict with keys:
+            - normalized: bool — whether normalization was performed
+            - low_confidence: bool — always False here (caller gates this)
+            - offset_x: int — x offset subtracted
+            - offset_y: int — y offset subtracted
+    """
+    import json
+
+    if not raw_data_path.exists():
+        raise FileNotFoundError(f"raw_data not found: {raw_data_path}")
+
+    with open(raw_data_path, encoding="utf-8") as f:
+        ocr_entries = json.load(f)
+
+    valid_points = [p for p in anchor_box if isinstance(p, (list, tuple)) and len(p) >= 2]
+    if not valid_points:
+        return {"normalized": False, "low_confidence": False, "offset_x": 0, "offset_y": 0}
+
+    offset_x = min(p[0] for p in valid_points)
+    offset_y = min(p[1] for p in valid_points)
+
+    normalized_entries = []
+    for entry in ocr_entries:
+        box = entry.get("box")
+        if box and isinstance(box, list):
+            entry["box"] = _subtract_offset(box, offset_x, offset_y)
+        normalized_entries.append(entry)
+
+    from app.output import write_json_atomic
+
+    write_json_atomic(raw_data_path, normalized_entries)
+
+    return {
+        "normalized": True,
+        "low_confidence": False,
+        "offset_x": offset_x,
+        "offset_y": offset_y,
+    }
+
+
+def shift_template_coords(
+    coords: Dict[str, Any],
+    offset_x: int,
+    offset_y: int,
+) -> Dict[str, Any]:
+    """Shift all template coordinate boxes by a given offset.
+
+    Shifts every box in ``coords_corrections`` so the template adopts the new
+    coordinate basis (e.g. topmost -> date anchor). Supports both single-box
+    (4-point polygon) and multi-box (list of polygons) field values.
+
+    Args:
+        coords: Template coords_corrections dict (field -> box or list of boxes).
+        offset_x: X offset subtract.
+        offset_y: Y offset subtract.
+
+    Returns:
+        A new dict with all boxes shifted.
+    """
+    shifted: Dict[str, Any] = {}
+    for field_name, box in coords.items():
+        if box is None:
+            shifted[field_name] = None
+        elif _is_multi_box(box):
+            shifted[field_name] = [_subtract_offset(sub_box, offset_x, offset_y) for sub_box in box]
+        else:
+            shifted[field_name] = _subtract_offset(box, offset_x, offset_y)
+    return shifted
+
+
+def _is_multi_box(value: Any) -> bool:
+    """Check if a field value is a multi-box (list of boxes) format.
+
+    Multi-box: [[[x1,y1],[x2,y2],...], [[x1,y1],[x2,y2],...]]
+    Single-box: [[x1,y1],[x2,y2],[x3,y3],[x4,y4]]
+    """
+    if not isinstance(value, list) or not value:
+        return False
+    if not isinstance(value[0], list) or not value[0]:
+        return False
+    return isinstance(value[0][0], list)

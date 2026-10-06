@@ -409,7 +409,7 @@ def get_latest_template_by_clinic(db_path: str | Path, clinic_id: str) -> Option
     try:
         cursor = conn.execute(
             """
-            SELECT id, clinic_id, version, coords_corrections, created_at
+            SELECT id, clinic_id, version, coords_corrections, coord_basis, created_at
             FROM templates
             WHERE clinic_id = ?
             ORDER BY version DESC
@@ -465,5 +465,126 @@ def insert_template_history(
                 """,
                 (history_id, template_id, clinic_id, version, coords_str, changed_fields, change_reason, receipt_id),
             )
+    finally:
+        conn.close()
+
+
+def update_template_basis(
+    db_path: str | Path,
+    clinic_id: str,
+    new_coords: Dict[str, Any],
+    changed_fields: list[str] | None = None,
+    history_reason: str = "basis_migration",
+) -> bool:
+    """Migrate a clinic's template coordinates to a new basis in one transaction.
+
+    Records the pre-migration coordinates into ``template_history`` and updates
+    ``coords_corrections`` plus ``coord_basis`` to ``'date'`` atomically, so the
+    template is never left partially migrated. If the template is already in
+    ``'date'`` basis, this is a no-op (guards against double conversion).
+
+    Args:
+        db_path: Path to the SQLite database.
+        clinic_id: The clinic ID whose latest template should be migrated.
+        new_coords: The new (date-basis) coords_corrections dict.
+        changed_fields: Optional list of field names changed by the migration.
+        history_reason: Reason recorded in template_history (default 'basis_migration').
+
+    Returns:
+        True if the template was migrated, False if there was nothing to migrate
+        (no template, or already in date basis).
+    """
+    conn = get_db_connection(db_path)
+    try:
+        with conn:
+            cursor = conn.execute(
+                """
+                SELECT id, version, coords_corrections, coord_basis
+                FROM templates
+                WHERE clinic_id = ?
+                ORDER BY version DESC
+                LIMIT 1
+                """,
+                (clinic_id,),
+            )
+            row = cursor.fetchone()
+            if row is None or row["coord_basis"] == "date":
+                return False
+
+            old_coords = json.loads(row["coords_corrections"]) if row["coords_corrections"] else {}
+
+            # Snapshot the pre-migration coords into history first (same transaction).
+            import uuid
+
+            history_id = str(uuid.uuid4())
+            changed_str = json.dumps(changed_fields or list(old_coords.keys()), ensure_ascii=False)
+            conn.execute(
+                """
+                INSERT INTO template_history
+                    (id, template_id, clinic_id, version, coords_corrections, changed_fields, change_reason)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    history_id,
+                    row["id"],
+                    clinic_id,
+                    row["version"],
+                    json.dumps(old_coords, ensure_ascii=False) if old_coords else None,
+                    changed_str,
+                    history_reason,
+                ),
+            )
+
+            conn.execute(
+                """
+                UPDATE templates
+                SET coords_corrections = ?, coord_basis = 'date'
+                WHERE id = ?
+                """,
+                (json.dumps(new_coords, ensure_ascii=False), row["id"]),
+            )
+            return True
+    finally:
+        conn.close()
+
+
+def update_receipt_ocr_json_by_source(
+    db_path: str | Path,
+    source_path: str,
+    ocr_json: Any,
+) -> bool:
+    """Update a receipt's stored ocr_json, matched by its source_path.
+
+    Used to keep the persisted OCR box coordinates consistent with the raw
+    JSON after date-anchor re-normalization (Issue #39, acceptance 6). Only the
+    most recent matching receipt row is updated, so calling this on a pre-existing
+    DB does not create duplicate rows.
+
+    Args:
+        db_path: Path to the SQLite database.
+        source_path: The source_path of the receipt to update.
+        ocr_json: The new OCR data (date-anchor basis) to store.
+
+    Returns:
+        True if a matching receipt row was updated, False otherwise.
+    """
+    ocr_str = json.dumps(ocr_json, ensure_ascii=False)
+    conn = get_db_connection(db_path)
+    try:
+        with conn:
+            cursor = conn.execute(
+                """
+                UPDATE receipts
+                SET ocr_json = ?
+                WHERE id = (
+                    SELECT id FROM receipts
+                    WHERE source_path = ? OR source_path LIKE ?
+                    ORDER BY created_at DESC, rowid DESC
+                    LIMIT 1
+                )
+                """,
+                (ocr_str, source_path, f"%/{Path(source_path).name}"),
+            )
+            return cursor.rowcount > 0
     finally:
         conn.close()
