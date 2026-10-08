@@ -1,4 +1,4 @@
-# medical-exp-deducation-calc
+# medical-exp-deduction-calc
 
 医療費控除用領収書 OCR アプリ。確定申告のためのデータ入力簡略化が目的。
 Phase 1（読み込み、抽出、修正、キャッシュ）のみを実装。計算（Phase 2）は未着手。
@@ -267,7 +267,14 @@ clinic のテンプレートに `date` 座標が学習済みで、同一 clinic/
 - anchor 後は構造化 parse を再実行せず、DB `receipts.ocr_json` を `update_receipt_ocr_json_by_source()` で
   date 基準へ更新する（再解析は receipt の二重登録を招くため行わない）。
 
-座標正規化・date anchor の判定条件・閾値・DB 移行は変更頻度が高いため、
+**前方テンプレート補正の coord_basis ガード（Issue #40）**: 前方補正
+（`ExtractionService._apply_template_corrections()`）は、受領時点の raw が topmost 基準であるのに
+`coord_basis=='date'` の template 座標を照合する基底不一致があった。移行済み clinic
+（`coord_basis=='date'`）では、座標ベースのフィールド上書き（`search_fields_by_proximity` による引き直し）
+を**スキップ**して誤上書きを防ぐ。clinic 名の正しい名への上書きと新規 clinic 作成は
+coord_basis に関係なく従来どおり実行する。未移行（`'topmost'` または旧データ）は従来動作。
+
+座標正規化・date anchor の判定条件・閾値・DB 移行・前方補正の coord_basis ガード詳細は変更頻度が高いため、
 `.hermes/rules/coordinate-normalization.md` に分離している。詳しくは以下を参照:
 - [.hermes/rules/coordinate-normalization.md](./.hermes/rules/coordinate-normalization.md)
 

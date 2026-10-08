@@ -65,6 +65,30 @@ normalize_coordinates()          … topmost/leftmost 基準（従来・常に�
   座標基準に非依存のため、再解析は不要。DB の座標同期は `update_receipt_ocr_json_by_source` で行う。
 - 基準切替は一度だけ（`coord_basis=='date'` ガード）。旧座標は `template_history` に残る。
 
+## 前方テンプレート補正と coord_basis（Issue #40）
+
+`ExtractionService._apply_template_corrections()`（`structural_parser.py`）は、受領時点の raw は
+**topmost 基準**なのに、`coord_basis=='date'` の template 座標を照合する基底不一致がある。これを防ぐため:
+
+- `coord_basis = template.get("coord_basis") or "topmost"` を取得。
+- `coord_basis == 'date'` のとき、**座標ベースのフィールド上書き**（`search_fields_by_proximity` による
+  各フィールド値の引き直し）を**スキップ**する（誤上書き防止が目的。値はテキスト抽出（LLM）にフォールバック）。
+- clinic 名の正しい名への上書きと新規 clinic 作成は、coord_basis に関係なく**常に**実行。
+- `coord_basis != 'date'`（`'topmost'` または旧データ）なら従来どおり座標上書きを実行。
+
+※ `coord_basis` は `NOT NULL DEFAULT 'topmost'` のためスキーマ上 NULL は入らない。`or "topmost"` は防御用。
+
+| 処理 | coord 使用 | date 基準での扱い |
+|------|-----------|-----------------|
+| ① clinic 特定（完全一致 / テキスト類似度） | 部分（レイアウト除く） | 残す |
+| ② 座標ベースのフィールド上書き（`search_fields_by_proximity`） | あり | **スキップ** |
+| ③ clinic 名の正しい名への上書き | なし | 残す（常に実行） |
+| ④ 新規 clinic 作成 | なし | 残す |
+
+- レイアウトマッチング（`match_template_by_layout`）も `coords_corrections` を使うが、name 解決で
+  template が見つからない場合のみ走る分岐のため、移行済み clinic では name 解決で得られれば入らない（実質回避）。
+- 詳細は `specs/2026-10-08-spec.md`（Issue #40）。
+
 ## 座標系の一貫性
 
 | 保存先 | 基準 | 備考 |
