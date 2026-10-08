@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import uuid
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -180,6 +181,115 @@ class TestOutputWriter:
     def test_proximity_threshold_default(self):
         """DEFAULT_PROXIMITY_THRESHOLD が 50.0 であること"""
         assert DEFAULT_PROXIMITY_THRESHOLD == 50.0
+
+
+class TestTemplateCoordBasis:
+    """Issue #40: coord_basis ('date' / 'topmost') による前方補正の分岐検証。"""
+
+    @staticmethod
+    def _set_coord_basis(temp_db: Path, template_id: str, basis: str) -> None:
+        """templates の coord_basis を更新する。"""
+        from app.db import get_db_connection
+
+        with get_db_connection(temp_db) as conn:
+            conn.execute(
+                "UPDATE templates SET coord_basis = ? WHERE id = ?",
+                (basis, template_id),
+            )
+
+    def test_template_based_extraction_skipped_when_date_basis(self, temp_output_dir: Path, temp_db: Path):
+        """coord_basis='date' の template では座標によるフィールド上書きがスキップされる。"""
+        from app.db import get_or_create_clinic, upsert_template
+
+        clinic_id = get_or_create_clinic(temp_db, "あおばクリニック")
+        template_id = str(uuid.uuid4())
+        upsert_template(
+            temp_db,
+            template_id,
+            clinic_id,
+            version=1,
+            coords_corrections={
+                "amount": [[400, 300], [480, 300], [480, 340], [400, 340]],
+            },
+        )
+        # #39 移行済みを模擬
+        self._set_coord_basis(temp_db, template_id, "date")
+
+        raw_path = temp_output_dir / "receipt-001.json"
+        # date 基準でも量のモック: 呼ばれたら 8888 を返す。date 基準なら呼ばれないはず。
+        with patch(
+            "app.structural_parser.search_fields_by_proximity",
+            return_value={"amount": "8888"},
+        ) as mock_proximity:
+            result = process_input_json(raw_path, model="mock", output_dir=temp_output_dir, db_path=temp_db)
+
+        assert result is not None
+        # 座標上書きは実行されない（search_fields_by_proximity が呼ばれない）
+        mock_proximity.assert_not_called()
+        # amount はテキスト抽出（mock）結果の 3800 のまま（上書き 8888 が混入しない）
+        assert result["amount"] == 3800
+
+    def test_template_based_extraction_works_for_topmost_basis(
+        self,
+        temp_output_dir: Path,
+        temp_db: Path,
+        seed_clinic_with_template: str,
+    ):
+        """coord_basis='topmost' の template では従来どおり座標上書きが動作する。"""
+        from app.db import get_latest_template_by_clinic
+
+        template = get_latest_template_by_clinic(temp_db, seed_clinic_with_template)
+        assert template is not None
+        self._set_coord_basis(temp_db, template["id"], "topmost")
+
+        raw_path = temp_output_dir / "receipt-001.json"
+        with patch(
+            "app.structural_parser.search_fields_by_proximity",
+            return_value={"amount": "8888"},
+        ) as mock_proximity:
+            result = process_input_json(raw_path, model="mock", output_dir=temp_output_dir, db_path=temp_db)
+
+        assert result is not None
+        # topmost では座標上書きが実行される
+        mock_proximity.assert_called_once()
+        # 戻り値 8888 で amount が上書きされる
+        assert result["amount"] == 8888
+
+    def test_date_basis_still_fixes_clinic_name(self, temp_output_dir: Path, temp_db: Path):
+        """coord_basis='date' でも、clinic 名の正しい名への上書き（③）は維持される。"""
+        from app.db import get_or_create_clinic, upsert_template
+
+        # ABCクリニック + date 基準 template を作成（#39 移行済みを模擬）
+        clinic_id = get_or_create_clinic(temp_db, "ABCクリニック")
+        template_id = str(uuid.uuid4())
+        upsert_template(
+            temp_db,
+            template_id,
+            clinic_id,
+            version=1,
+            coords_corrections={
+                "amount": [[400, 300], [480, 300], [480, 340], [400, 340]],
+            },
+        )
+        self._set_coord_basis(temp_db, template_id, "date")
+
+        # 文字欠け（"BCクリニック"）で類似度マッチを誘発。座標は ABC template と同じレイアウト
+        modified_ocr = [
+            {"text": "山田 太郎", "confidence": 0.95, "box": [[50, 100], [200, 100], [200, 140], [50, 140]]},
+            {"text": "BCクリニック", "confidence": 0.85, "box": [[50, 160], [300, 160], [300, 200], [50, 200]]},
+            {"text": "3,800円", "confidence": 0.88, "box": [[400, 300], [480, 300], [480, 340], [400, 340]]},
+            {"text": "2026/01/15", "confidence": 0.90, "box": [[50, 50], [200, 50], [200, 80], [50, 80]]},
+        ]
+        raw_path = temp_output_dir / "clinic-fix.json"
+        write_json_atomic(raw_path, modified_ocr)
+
+        result = process_input_json(raw_path, model="mock", output_dir=temp_output_dir, db_path=temp_db)
+
+        assert result is not None
+        # 座標上書きはスキップされ、テキスト抽出（mock）の値のまま
+        assert result["amount"] == 3800
+        # clinic 名の正しい名への上書き（③）は date 基準でも従来どおり動作
+        assert result["clinic"] == "ABCクリニック"
 
 
 class TestApplyTemplateMultiBox:
