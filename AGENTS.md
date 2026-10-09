@@ -1,4 +1,4 @@
-# medical-exp-deducation-calc
+# medical-exp-deduction-calc
 
 医療費控除用領収書 OCR アプリ。確定申告のためのデータ入力簡略化が目的。
 Phase 1（読み込み、抽出、修正、キャッシュ）のみを実装。計算（Phase 2）は未着手。
@@ -19,6 +19,7 @@ Phase 1（読み込み、抽出、修正、キャッシュ）のみを実装。�
 │   ├── db_migrations.py       # スキーママイグレーション
 │   ├── schema.sql             # 最終的な SQL スキーマ (source of truth)
 │   ├── coord_normalizer.py    # 座標正規化 (offset 除去) + topmost Confidence 判定
+│   ├── date_anchor.py         # date anchor 照合・解決・適用 [Issue #39]
 │   ├── coord_search.py        # 座標ベースのフィールド検索
 │   ├── image_preprocessing.py # OCR 前処理 (CLAHE / 適応的二値化) [Issue #36]
 │   ├── image_resize.py        # OCR 向け画像リサイズ
@@ -255,6 +256,28 @@ GPU なし環境でも動作する前提。
 `.hermes/rules/ocr-preprocessing.md` に分離している。詳しくは以下を参照:
 - [.hermes/rules/ocr-preprocessing.md](./.hermes/rules/ocr-preprocessing.md)
 
+### 座標正規化の基準と date anchor
+
+座標正規化は既定で **topmost/leftmost 基準**（全 box の最小 x/y を原点）。
+clinic のテンプレートに `date` 座標が学習済みで、同一 clinic/layout の処理時に日付候補が
+**信頼できれば**、選択した **date box の左上を基準に全 box を再正規化**する（date 基準）。
+
+- date 基準への切替は画像OCR / watcher 経路のみ。`process_input_json`（`--input-json` 単体）は無変更（後方互換）。
+- `templates` に座標基準を識別する `coord_basis` 列（`'topmost'` / `'date'`）を持つ。基準切替は一度だけ（二重変換防止）。
+- anchor 後は構造化 parse を再実行せず、DB `receipts.ocr_json` を `update_receipt_ocr_json_by_source()` で
+  date 基準へ更新する（再解析は receipt の二重登録を招くため行わない）。
+
+**前方テンプレート補正の coord_basis ガード（Issue #40）**: 前方補正
+（`ExtractionService._apply_template_corrections()`）は、受領時点の raw が topmost 基準であるのに
+`coord_basis=='date'` の template 座標を照合する基底不一致があった。移行済み clinic
+（`coord_basis=='date'`）では、座標ベースのフィールド上書き（`search_fields_by_proximity` による引き直し）
+を**スキップ**して誤上書きを防ぐ。clinic 名の正しい名への上書きと新規 clinic 作成は
+coord_basis に関係なく従来どおり実行する。未移行（`'topmost'` または旧データ）は従来動作。
+
+座標正規化・date anchor の判定条件・閾値・DB 移行・前方補正の coord_basis ガード詳細は変更頻度が高いため、
+`.hermes/rules/coordinate-normalization.md` に分離している。詳しくは以下を参照:
+- [.hermes/rules/coordinate-normalization.md](./.hermes/rules/coordinate-normalization.md)
+
 ## 出力ファイル命名
 
 変更頻度が高く、Issue #36 で前処理済みファイルが追加されたため、
@@ -282,6 +305,7 @@ GPU なし環境でも動作する前提。
 - 変更頻度の高いルール (`rules`):
   - CLI 使い方・引数一覧: `.hermes/rules/cli.md`
   - OCR 前処理・出力ファイル命名: `.hermes/rules/ocr-preprocessing.md`
+  - 座標正規化・date anchor・DB coord_basis: `.hermes/rules/coordinate-normalization.md`
 
 <!-- code-review-graph MCP tools -->
 ## MCP Tools: code-review-graph

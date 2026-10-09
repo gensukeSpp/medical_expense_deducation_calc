@@ -275,6 +275,42 @@ class TestProcess:
             with pytest.raises(ValueError, match="parse failed"):
                 service.process(image_path, output_dir, model="mock", db_path=None)
 
+    def test_happy_path_anchor_called_when_learned_template(
+        self, service: ImageProcessingService, image_path: Path, output_dir: Path
+    ):
+        """db_path 指定 + 低Confidenceでない場合、date anchor 正規化が実行される。"""
+        mtime = int(image_path.stat().st_mtime)
+        raw_path = output_dir / f"receipt-001_{mtime}-raw_data.json"
+
+        with (
+            patch.object(service, "_run_ocr"),
+            patch.object(service, "_get_topmost_confidence", return_value=(False, 0.95)),
+            patch.object(service, "_normalize_coords", return_value=False),
+            patch.object(service, "_parse_structured", return_value={"clinic": "A", "date": "2026-01-15"}),
+            patch("app.date_anchor.apply_date_anchor_normalization") as mock_anchor,
+        ):
+            service.process(image_path, output_dir, model="mock", db_path="/tmp/db.sqlite3")
+
+        mock_anchor.assert_called_once_with(raw_path, {"clinic": "A", "date": "2026-01-15"}, "/tmp/db.sqlite3")
+
+    def test_happy_path_anchor_skipped_when_low_confidence(
+        self, service: ImageProcessingService, image_path: Path, output_dir: Path
+    ):
+        """低Confidence時は date anchor 正規化を実行しない（既存挙動維持）。"""
+        mtime = int(image_path.stat().st_mtime)
+        raw_path = output_dir / f"receipt-001_{mtime}-raw_data.json"
+
+        with (
+            patch.object(service, "_run_ocr"),
+            patch.object(service, "_get_topmost_confidence", return_value=(True, 0.5)),
+            patch.object(service, "_normalize_coords", return_value=True),
+            patch.object(service, "_parse_structured", return_value={"clinic": "A", "date": "2026-01-15"}),
+            patch("app.date_anchor.apply_date_anchor_normalization") as mock_anchor,
+        ):
+            service.process(image_path, output_dir, model="mock", db_path="/tmp/db.sqlite3")
+
+        mock_anchor.assert_not_called()
+
 
 class TestProcessPreprocessRetry:
     def test_low_confidence_triggers_preprocess_retry_keeps_both_raw(self, service, image_path, output_dir, tmp_path):

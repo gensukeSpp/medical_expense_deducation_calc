@@ -123,9 +123,16 @@ class ExtractionService:
                     ocr_entries = self._get_ocr_entries(ocr_json)
                     if ocr_entries:
                         all_templates = get_all_templates_with_names(self.db_path)
+                        # date 基準の template は topmost 基準の raw に照合できないため、
+                        # layout matching の候補から除外する（Issue #40, 案B 粒度2）。
+                        # これにより name マッチング失敗時の layout fallback でも
+                        # date/topmost の誤上書きを防ぐ。
+                        topmost_templates = [
+                            t for t in all_templates if (t.get("coord_basis") or "topmost") == "topmost"
+                        ]
                         matched = match_template_by_layout(
                             ocr_entries,
-                            all_templates,
+                            topmost_templates,
                             proximity_threshold=DEFAULT_PROXIMITY_THRESHOLD,
                         )
                         if matched:
@@ -141,20 +148,26 @@ class ExtractionService:
 
             # テンプレート適用
             if template and matched_clinic_name:
-                coords = template.get("coords_corrections")
-                if coords:
-                    ocr_entries = self._get_ocr_entries(ocr_json)
-                    if ocr_entries:
-                        proximity_texts = search_fields_by_proximity(
-                            ocr_entries,
-                            coords,
-                            threshold=DEFAULT_PROXIMITY_THRESHOLD,
-                        )
-                        for field_name, concat_text in proximity_texts.items():
-                            if concat_text and field_name in extracted:
-                                extracted[field_name] = concat_text
+                coord_basis = template.get("coord_basis") or "topmost"
+                # 移行済み（date 基準）の template は topmost 基準の raw に照合できないため、
+                # 座標ベースのフィールド上書きをスキップする（Issue #40, 案B 粒度1）。
+                # 誤上書き防止が目的。値はテキスト抽出（LLM）にフォールバック。
+                if coord_basis != "date":
+                    coords = template.get("coords_corrections")
+                    if coords:
+                        ocr_entries = self._get_ocr_entries(ocr_json)
+                        if ocr_entries:
+                            proximity_texts = search_fields_by_proximity(
+                                ocr_entries,
+                                coords,
+                                threshold=DEFAULT_PROXIMITY_THRESHOLD,
+                            )
+                            for field_name, concat_text in proximity_texts.items():
+                                if concat_text and field_name in extracted:
+                                    extracted[field_name] = concat_text
 
                 # 正しいクリニック名で上書き（後続の get_or_create_clinic が正しい既存クリニックを参照するため）
+                # は coord_basis に関係なく常に実行
                 if matched_clinic_name != clinic_name:
                     extracted["clinic"] = matched_clinic_name
             else:

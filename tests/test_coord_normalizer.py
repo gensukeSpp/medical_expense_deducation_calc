@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from app.coord_normalizer import normalize_coordinates, _find_min_coords, _subtract_offset
+from app.coord_normalizer import (
+    normalize_coordinates,
+    _find_min_coords,
+    _subtract_offset,
+    normalize_coordinates_by_anchor,
+    shift_template_coords,
+)
 
 
 def _make_raw_data(entries: list[dict]) -> Path:
@@ -196,10 +202,8 @@ class TestGetTopmostConfidence:
         raw.write_text(
             json.dumps(
                 [
-                    {"text": "top", "confidence": 0.5,
-                     "box": [[0, 0], [10, 0], [10, 5], [0, 5]]},
-                    {"text": "below", "confidence": 0.9,
-                     "box": [[0, 20], [30, 20], [30, 25], [0, 25]]},
+                    {"text": "top", "confidence": 0.5, "box": [[0, 0], [10, 0], [10, 5], [0, 5]]},
+                    {"text": "below", "confidence": 0.9, "box": [[0, 20], [30, 20], [30, 25], [0, 25]]},
                 ]
             ),
             encoding="utf-8",
@@ -213,8 +217,7 @@ class TestGetTopmostConfidence:
         raw.write_text(
             json.dumps(
                 [
-                    {"text": "top", "confidence": 0.95,
-                     "box": [[0, 0], [10, 0], [10, 5], [0, 5]]},
+                    {"text": "top", "confidence": 0.95, "box": [[0, 0], [10, 0], [10, 5], [0, 5]]},
                 ]
             ),
             encoding="utf-8",
@@ -228,3 +231,67 @@ class TestGetTopmostConfidence:
         raw.write_text(json.dumps([{"text": "x", "confidence": None, "box": [[0, 0]]}]), encoding="utf-8")
         low, conf = get_topmost_confidence(raw)
         assert low is True
+
+
+class TestNormalizeByAnchor:
+    def test_shifts_all_boxes_to_anchor_origin(self, tmp_path):
+        entries = [
+            {"text": "2026/01/15", "box": [[50, 100], [150, 100], [150, 130], [50, 130]]},
+            {"text": "金額", "box": [[300, 200], [400, 200], [400, 230], [300, 230]]},
+        ]
+        raw_path = tmp_path / "test-raw_data.json"
+        json.dump(entries, open(raw_path, "w", encoding="utf-8"))
+
+        # anchor is the date box at top-left (50,100)
+        anchor = entries[0]["box"]
+        result = normalize_coordinates_by_anchor(raw_path, anchor)
+
+        assert result["normalized"] is True
+        assert result["offset_x"] == 50
+        assert result["offset_y"] == 100
+
+        updated = json.load(open(raw_path, encoding="utf-8"))
+        # date box top-left -> (0,0)
+        assert updated[0]["box"][0] == [0, 0]
+        # amount box shifted
+        assert updated[1]["box"][0] == [250, 100]
+
+    def test_invalid_anchor_returns_not_normalized(self, tmp_path):
+        entries = [{"text": "a", "box": [[0, 0], [10, 0], [10, 10], [0, 10]]}]
+        raw_path = tmp_path / "test-raw_data.json"
+        json.dump(entries, open(raw_path, "w", encoding="utf-8"))
+
+        result = normalize_coordinates_by_anchor(raw_path, [])
+        assert result["normalized"] is False
+
+        # file unchanged
+        updated = json.load(open(raw_path, encoding="utf-8"))
+        assert updated[0]["box"] == [[0, 0], [10, 0], [10, 10], [0, 10]]
+
+    def test_file_not_found_raises(self):
+        import pytest
+
+        with pytest.raises(FileNotFoundError):
+            normalize_coordinates_by_anchor(Path("/nonexistent.json"), [[0, 0]])
+
+
+class TestShiftTemplateCoords:
+    def test_single_box(self):
+        coords = {"date": [[50, 100], [150, 100], [150, 130], [50, 130]]}
+        shifted = shift_template_coords(coords, 50, 100)
+        assert shifted["date"] == [[0, 0], [100, 0], [100, 30], [0, 30]]
+
+    def test_multi_box(self):
+        coords = {
+            "name": [
+                [[50, 100], [150, 100], [150, 130], [50, 130]],
+                [[200, 100], [300, 100], [300, 130], [200, 130]],
+            ]
+        }
+        shifted = shift_template_coords(coords, 50, 100)
+        assert shifted["name"][0][0] == [0, 0]
+        assert shifted["name"][1][0] == [150, 0]
+
+    def test_none_value_preserved(self):
+        coords = {"date": None}
+        assert shift_template_coords(coords, 50, 100) == {"date": None}

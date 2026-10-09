@@ -200,8 +200,9 @@ class ReceiptProcessor:
                         LOG.exception("Coordinate normalization failed for %s", active_raw_path)
 
                 # Generate structured data from OCR raw data
+                structured = None
                 try:
-                    process_input_json(
+                    structured = process_input_json(
                         active_raw_path,
                         model=self.model,
                         output_dir=output_dir,
@@ -210,6 +211,17 @@ class ReceiptProcessor:
                     LOG.info("Structured data generated for %s", active_raw_path)
                 except Exception:
                     LOG.exception("Failed to generate structured data for %s", active_raw_path)
+
+                # Issue #39: 学習済み date テンプレートがあれば raw を date 基準へ再正規化し、
+                # DB の ocr_json を新基準へ更新する（受け入れ条件 6）。
+                # ※ 構造化出力の値はテキスト抽出に由来し座標基準へ依存しないため、再解析は行わない。
+                if structured and self.db_path and not low_confidence:
+                    try:
+                        from app.date_anchor import apply_date_anchor_normalization
+
+                        apply_date_anchor_normalization(active_raw_path, structured, self.db_path)
+                    except Exception:
+                        LOG.exception("Date-anchor normalization failed for %s", active_raw_path)
 
                 # Set low_confidence flag in structured data if needed
                 if low_confidence:
