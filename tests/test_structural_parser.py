@@ -487,3 +487,47 @@ class TestHybridTemplateMatching:
         assert result["clinic"] is None
         # エラーが発生しないこと
         assert result["amount"] == 3800
+
+    def test_hybrid_layout_fallback_skips_date_basis_template(
+        self,
+        temp_output_dir: Path,
+        temp_db: Path,
+        seed_abc_clinic_with_template: str,
+    ):
+        """[P1] クリニック名が全く異なり、かつ template が date 基準の場合、
+
+        layout fallback で date 基準 template が座標上書きへ渡らない（Issue #40）。
+        座標上書きがスキップされるため、amount は OCR テキストからの抽出値のまま。
+        """
+        from app.db import get_db_connection
+
+        # seed した template を date 基準に変更（#39 移行済みを模擬）
+        conn = get_db_connection(temp_db)
+        try:
+            conn.execute(
+                "UPDATE templates SET coord_basis = 'date' WHERE clinic_id = ?",
+                (seed_abc_clinic_with_template,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        # クリニック名に「医院」を含める（MockLLMClient が clinic として認識）
+        # 座標は ABCクリニックのテンプレートと同じレイアウトだが、date 基準なので照合除外
+        modified_ocr = [
+            {"text": "山田 太郎", "confidence": 0.95, "box": [[50, 100], [200, 100], [200, 140], [50, 140]]},
+            {"text": "別の医院", "confidence": 0.92, "box": [[50, 160], [300, 160], [300, 200], [50, 200]]},
+            {"text": "3,800円", "confidence": 0.88, "box": [[400, 300], [480, 300], [480, 340], [400, 340]]},
+            {"text": "2026/01/15", "confidence": 0.90, "box": [[50, 50], [200, 50], [200, 80], [50, 80]]},
+        ]
+        raw_path = temp_output_dir / "layout-date-basis.json"
+        write_json_atomic(raw_path, modified_ocr)
+
+        result = process_input_json(raw_path, model="mock", output_dir=temp_output_dir, db_path=temp_db)
+
+        assert result is not None
+        # date 基準 template は layout fallback から除外されるため、座標上書きされない
+        # amount は OCR テキスト "3,800円" から抽出された 3800 のまま（上書きされても値は同じだが、
+        # ここでは clinic 名が "ABCクリニック" に上書きされていないことで layout マッチが
+        # 発生していないことを確認する）
+        assert result["clinic"] != "ABCクリニック"

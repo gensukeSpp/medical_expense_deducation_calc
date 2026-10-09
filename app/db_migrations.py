@@ -28,6 +28,11 @@ def _add_coord_basis_column_if_missing(conn) -> None:
 def run_migrations(db_path: str | Path, schema_path: str | Path) -> None:
     """Read the SQL schema file and initialize the database.
 
+    Schema application and the idempotent coord_basis column migration are
+    performed within a single connection / exclusive transaction so that
+    concurrent initializers cannot both observe a missing column and then
+    race on a duplicate ALTER TABLE (Issue #39 migration safety).
+
     Args:
         db_path: Path to the SQLite database file.
         schema_path: Path to the SQL schema file.
@@ -42,18 +47,19 @@ def run_migrations(db_path: str | Path, schema_path: str | Path) -> None:
     with open(schema_path, "r", encoding="utf-8") as f:
         schema_sql = f.read()
 
-    # executescript handles multiple statements and commits implicitly
+    # Single connection + exclusive transaction: schema application and the
+    # coord_basis column migration share the write lock, so concurrent
+    # initializers serialize and the idempotent ALTER TABLE cannot race.
     conn = get_db_connection(db_path)
     try:
-        conn.executescript(schema_sql)
-    finally:
-        conn.close()
-
-    # Issue #39: migrate pre-existing databases that lack coord_basis.
-    conn = get_db_connection(db_path)
-    try:
-        with conn:
+        conn.execute("BEGIN EXCLUSIVE TRANSACTION")
+        try:
+            conn.executescript(schema_sql)
             _add_coord_basis_column_if_missing(conn)
+        except Exception:
+            conn.rollback()
+            raise
+        conn.commit()
     finally:
         conn.close()
     print("Database initialization complete.")

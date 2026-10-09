@@ -202,10 +202,8 @@ class TestGetTopmostConfidence:
         raw.write_text(
             json.dumps(
                 [
-                    {"text": "top", "confidence": 0.5,
-                     "box": [[0, 0], [10, 0], [10, 5], [0, 5]]},
-                    {"text": "below", "confidence": 0.9,
-                     "box": [[0, 20], [30, 20], [30, 25], [0, 25]]},
+                    {"text": "top", "confidence": 0.5, "box": [[0, 0], [10, 0], [10, 5], [0, 5]]},
+                    {"text": "below", "confidence": 0.9, "box": [[0, 20], [30, 20], [30, 25], [0, 25]]},
                 ]
             ),
             encoding="utf-8",
@@ -219,8 +217,7 @@ class TestGetTopmostConfidence:
         raw.write_text(
             json.dumps(
                 [
-                    {"text": "top", "confidence": 0.95,
-                     "box": [[0, 0], [10, 0], [10, 5], [0, 5]]},
+                    {"text": "top", "confidence": 0.95, "box": [[0, 0], [10, 0], [10, 5], [0, 5]]},
                 ]
             ),
             encoding="utf-8",

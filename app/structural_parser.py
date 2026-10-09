@@ -123,9 +123,16 @@ class ExtractionService:
                     ocr_entries = self._get_ocr_entries(ocr_json)
                     if ocr_entries:
                         all_templates = get_all_templates_with_names(self.db_path)
+                        # date 基準の template は topmost 基準の raw に照合できないため、
+                        # layout matching の候補から除外する（Issue #40, 案B 粒度2）。
+                        # これにより name マッチング失敗時の layout fallback でも
+                        # date/topmost の誤上書きを防ぐ。
+                        topmost_templates = [
+                            t for t in all_templates if (t.get("coord_basis") or "topmost") == "topmost"
+                        ]
                         matched = match_template_by_layout(
                             ocr_entries,
-                            all_templates,
+                            topmost_templates,
                             proximity_threshold=DEFAULT_PROXIMITY_THRESHOLD,
                         )
                         if matched:

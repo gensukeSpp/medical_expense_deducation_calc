@@ -13,12 +13,29 @@ performs the anchor *resolution* (candidate matching + ambiguity checks).
 from __future__ import annotations
 
 import logging
+from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from app.normalization import parse_date
 
 logger = logging.getLogger(__name__)
+
+
+def _is_valid_calendar_date(iso_date: Optional[str]) -> bool:
+    """Return True if ``iso_date`` is a real calendar date (YYYY-MM-DD).
+
+    parse_date() only validates digit ranges loosely (e.g. 2026-99-99 passes),
+    so we confirm the value is an actually-existing date before trusting it as
+    an anchor (Issue #39: only reliable candidates may anchor).
+    """
+    if not iso_date:
+        return False
+    try:
+        date.fromisoformat(iso_date)
+        return True
+    except ValueError:
+        return False
 
 
 def find_date_candidates(
@@ -41,7 +58,7 @@ def find_date_candidates(
     if not structured_date:
         return []
     target = parse_date(structured_date)
-    if target is None:
+    if target is None or not _is_valid_calendar_date(target):
         return []
 
     candidates = []
@@ -52,7 +69,10 @@ def find_date_candidates(
         box = entry.get("box")
         if not text or not box:
             continue
-        if parse_date(text) == target:
+        parsed = parse_date(text)
+        if parsed is None or not _is_valid_calendar_date(parsed):
+            continue
+        if parsed == target:
             candidates.append(entry)
     return candidates
 
@@ -159,7 +179,7 @@ def apply_date_anchor_normalization(
     if not structured_date or not clinic_name:
         return None
 
-    from app.db import get_latest_template_by_clinic, get_or_create_clinic, update_template_basis
+    from app.db import get_latest_template_by_clinic, get_or_create_clinic
 
     clinic_id = get_or_create_clinic(db_path, str(clinic_name).strip())
     template = get_latest_template_by_clinic(db_path, clinic_id)
@@ -199,11 +219,26 @@ def apply_date_anchor_normalization(
     if template_basis == "topmost":
         from app.db import update_template_basis as _utb
 
-        new_coords = shift_template_coords(coords, offset_x, offset_y)
+        # template は topmost 基準で学習されているため、date 基準へ変換するには
+        # template 自身の date box 位置（topmost 座標系）でシフトする。
+        # anchor の offset（raw の date 位置）でシフトすると、template の date box が
+        # 原点 (0,0) に揃わず、以降の近傍検索・座標マッチングが継続してずれる（Issue #39-4）。
+        template_date_box = coords.get("date")
+        if template_date_box is None:
+            return None  # date 未学習 → 従来方式
+        valid_points = [p for p in template_date_box if isinstance(p, (list, tuple)) and len(p) >= 2]
+        if not valid_points:
+            return None
+        template_offset_x = min(p[0] for p in valid_points)
+        template_offset_y = min(p[1] for p in valid_points)
+
+        new_coords = shift_template_coords(coords, template_offset_x, template_offset_y)
         _utb(db_path, clinic_id, new_coords, changed_fields=list(coords.keys()))
         logger.info(
-            "Migrated template for clinic %s to date basis (offset=(%d, %d))",
+            "Migrated template for clinic %s to date basis (template_offset=(%d, %d), raw_offset=(%d, %d))",
             clinic_id,
+            template_offset_x,
+            template_offset_y,
             offset_x,
             offset_y,
         )

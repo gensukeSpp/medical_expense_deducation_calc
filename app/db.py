@@ -205,21 +205,22 @@ def get_all_templates_with_names(db_path: str | Path) -> list[dict[str, Any]]:
     """Get all templates with their associated clinic names.
 
     Only the latest version of each clinic's template is returned.
-    coords_corrections is JSON-decoded.
+    coords_corrections is JSON-decoded. coord_basis is included so callers
+    can guard against mixing coordinate bases (Issue #40).
 
     Args:
         db_path: Path to the SQLite database.
 
     Returns:
         List of template dicts with keys id, clinic_id, version,
-        coords_corrections, created_at, clinic_name.
+        coords_corrections, created_at, clinic_name, coord_basis.
         Empty list if no templates exist.
     """
     conn = get_db_connection(db_path)
     try:
         cursor = conn.execute("""
             SELECT t.id, t.clinic_id, t.version, t.coords_corrections,
-                   t.created_at, c.name as clinic_name
+                   t.created_at, c.name as clinic_name, t.coord_basis
             FROM templates t
             JOIN clinics c ON t.clinic_id = c.id
             WHERE t.version = (
